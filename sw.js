@@ -1,4 +1,4 @@
-const CACHE = "daily-planner-20260910165927";
+const CACHE = "daily-planner-20260910170312";
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {

@@ -112,6 +112,10 @@
   .cell.event .inner { background: var(--row-2); }
   .cell.event .title { color: var(--text-2); }
   .cell.past .inner { opacity: .45; }
+  /* 期限のないものは、締切ぶんと同じ濃さで出さない。
+     全部が同じ見た目だと「今日やらないとまずいもの」が埋もれる。 */
+  .cell.loose .title { color: var(--text-2); }
+  .cell.loose .dot { opacity: .5; }
   .cell.running .title { color: var(--accent); }
 
   /* いまの時刻 */
@@ -1051,6 +1055,17 @@ if (typeof module !== "undefined" && module.exports) {
     box.appendChild(group);
   }
 
+  /** 期限を「今日まで」「あと3日」の言い方にする。 */
+  function dueWord(due) {
+    if (!due) return "いつでも";
+    var diff = Math.round((parseKey(due) - parseKey(todayKey())) / 86400000);
+    if (diff < 0) return (-diff) + "日すぎ";
+    if (diff === 0) return "今日まで";
+    if (diff === 1) return "明日まで";
+    if (diff <= 14) return "あと" + diff + "日";
+    return due.slice(5).replace("-", "/") + "まで";
+  }
+
   function reasonText(w) {
     if (w.type === "unplaced") return "置き場所がありません";
     if (w.type === "late") return w.due ? w.due + " までに終わりません" : "期限に間に合いません";
@@ -1102,7 +1117,7 @@ if (typeof module !== "undefined" && module.exports) {
   function itemCell(item, now, isToday) {
     var cell = document.createElement("div");
     var past = isToday && new Date(item.end) <= now;
-    cell.className = "cell " + item.type + (past ? " past" : "");
+    cell.className = "cell " + item.type + (past ? " past" : "") + (item.loose ? " loose" : "");
 
     var inner = document.createElement(item.type === "block" ? "button" : "div");
     inner.className = "inner";
@@ -1118,9 +1133,13 @@ if (typeof module !== "undefined" && module.exports) {
     title.textContent = item.title;
     var meta = document.createElement("span");
     meta.className = "meta";
-    meta.textContent = item.type === "event"
-      ? "予定 " + hm(item.start) + "–" + hm(item.end)
-      : item.category + " " + item.minutes + "分";
+    if (item.type === "event") {
+      meta.textContent = "予定 " + hm(item.start) + "–" + hm(item.end);
+    } else if (item.loose) {
+      meta.textContent = item.category + " " + item.minutes + "分 · 空き時間ぶん";
+    } else {
+      meta.textContent = item.category + " " + item.minutes + "分 · " + dueWord(item.due);
+    }
     mid.appendChild(title);
     mid.appendChild(document.createElement("br"));
     mid.appendChild(meta);
