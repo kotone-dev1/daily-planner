@@ -12,15 +12,17 @@
 <link rel="manifest" href="./manifest.webmanifest">
 
 <style>
-  /* 暗いほうを基準にする（iOSの時計アプリに合わせる）。明るいほうは差し替えで作る。 */
+  /* 黒だけで作る。明るいテーマは持たない（本人の指定）。
+     端末が明るい設定でも黒のまま出るよう、色は必ずここのトークンから取る。 */
   :root {
+    color-scheme: dark;
     --bg: #000000;
-    --row: #1C1C1E;
-    --row-2: #2C2C2E;
-    --sep: #38383A;
+    --row: #131315;
+    --row-2: #1C1C1E;
+    --sep: #2C2C2E;
     --text: #FFFFFF;
     --text-2: #98989F;
-    --text-3: #636366;
+    --text-3: #5E5E63;
     --accent: #FF9F0A;
     --accent-dim: rgba(255, 159, 10, .18);
     --danger: #FF453A;
@@ -28,38 +30,6 @@
     --cat-2: #30D158;
     --cat-3: #BF5AF2;
     --radius: 10px;
-  }
-  @media (prefers-color-scheme: light) {
-    :root:not([data-theme="dark"]) {
-      --bg: #F2F2F7;
-      --row: #FFFFFF;
-      --row-2: #F2F2F7;
-      --sep: #C6C6C8;
-      --text: #000000;
-      --text-2: #6C6C70;
-      --text-3: #8E8E93;
-      --accent: #FF9500;
-      --accent-dim: rgba(255, 149, 0, .14);
-      --danger: #FF3B30;
-      --cat-1: #007AFF;
-      --cat-2: #34C759;
-      --cat-3: #AF52DE;
-    }
-  }
-  :root[data-theme="light"] {
-    --bg: #F2F2F7;
-    --row: #FFFFFF;
-    --row-2: #F2F2F7;
-    --sep: #C6C6C8;
-    --text: #000000;
-    --text-2: #6C6C70;
-    --text-3: #8E8E93;
-    --accent: #FF9500;
-    --accent-dim: rgba(255, 149, 0, .14);
-    --danger: #FF3B30;
-    --cat-1: #007AFF;
-    --cat-2: #34C759;
-    --cat-3: #AF52DE;
   }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -251,6 +221,16 @@
     border-radius: var(--radius); padding: 14px; min-height: 52px; font-size: 17px;
   }
   .parsed { padding: 8px 20px 0; font-size: 13px; color: var(--text-2); min-height: 20px; }
+  .catch textarea {
+    width: 100%; background: var(--row); border: none; color: var(--text);
+    border-radius: var(--radius); padding: 14px; font-size: 17px;
+    line-height: 1.6; resize: none; font-family: inherit;
+  }
+  .kind-badge {
+    display: inline-block; text-align: center;
+    font-size: 12px; color: var(--text-2);
+    border: 1px solid var(--sep); border-radius: 5px; padding: 2px 0;
+  }
   .mic {
     display: flex; align-items: center; justify-content: center; gap: 8px;
     margin: 12px 16px 0; width: calc(100% - 32px);
@@ -328,50 +308,96 @@
   <button type="button" data-tab="settings">設定</button>
 </nav>
 
-<!-- 追加 -->
+<!-- 追加：まとめて喋って、勝手に仕分ける -->
 <div class="backdrop" id="addBackdrop" hidden></div>
-<div class="sheet" id="addSheet" hidden role="dialog" aria-label="タスクを追加">
+<div class="sheet" id="addSheet" hidden role="dialog" aria-label="追加">
   <div class="grabber"></div>
   <div class="sheet-head">
-    <span class="t">追加</span>
+    <span class="t" id="addStageTitle">追加</span>
     <button type="button" id="addCancel">キャンセル</button>
   </div>
-  <div class="catch">
-    <input type="text" id="catchInput" placeholder="レポート提出 90分 金曜まで" autocomplete="off" enterkeyhint="done">
+
+  <!-- 第1段: 喋る / 書く -->
+  <div id="stageSpeak">
+    <div class="catch">
+      <textarea id="catchInput" rows="4" placeholder="溜まってるものを続けて言ってください&#10;例）今日中に、カット90分、テロップ60分。あと毎日アポ5件"></textarea>
+    </div>
+    <button class="mic" type="button" id="micBtn" data-listening="false">
+      <svg width="17" height="17" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="5.75" y="1.75" width="4.5" height="8" rx="2.25"></rect>
+        <path d="M3.25 7.5a4.75 4.75 0 0 0 9.5 0M8 12.25v2"></path>
+      </svg>
+      <span id="micLabel">話して追加</span>
+    </button>
+    <div class="msg" id="addMsg"></div>
+    <button class="bigbtn filled" id="toReview" type="button" disabled>仕分ける</button>
   </div>
-  <div class="parsed" id="parsedHint"></div>
-  <button class="mic" type="button" id="micBtn" data-listening="false">
-    <svg width="17" height="17" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5">
-      <rect x="5.75" y="1.75" width="4.5" height="8" rx="2.25"></rect>
-      <path d="M3.25 7.5a4.75 4.75 0 0 0 9.5 0M8 12.25v2"></path>
-    </svg>
-    <span id="micLabel">話して追加</span>
-  </button>
-  <div class="msg" id="addMsg"></div>
+
+  <!-- 第2段: 仕分けた結果を確認 -->
+  <div id="stageReview" hidden>
+    <div class="parsed" id="reviewSummary"></div>
+    <div id="reviewList"></div>
+    <div class="msg" id="reviewMsg"></div>
+    <button class="bigbtn filled" id="saveAll" type="button">まとめて保存</button>
+    <button class="bigbtn" id="backToSpeak" type="button">言い直す</button>
+  </div>
+</div>
+
+<!-- 1件を直す -->
+<div class="backdrop" id="editBackdrop" hidden></div>
+<div class="sheet" id="editSheet" hidden role="dialog" aria-label="項目を直す">
+  <div class="grabber"></div>
+  <div class="sheet-head">
+    <span class="t">直す</span>
+    <button type="button" id="editClose">閉じる</button>
+  </div>
+  <div class="catch">
+    <input type="text" id="eTitle" autocomplete="off">
+  </div>
   <div class="fields">
     <div class="field">
-      <label for="fEstimate">見積</label>
-      <input type="number" id="fEstimate" min="5" step="5" inputmode="numeric" placeholder="分（必須）">
+      <label for="eKind">形</label>
+      <select id="eKind">
+        <option value="task">1回だけ</option>
+        <option value="goal">目標</option>
+        <option value="routine">日課</option>
+      </select>
     </div>
     <div class="field">
-      <label for="fDue">期限</label>
-      <input type="date" id="fDue">
+      <label for="eEstimate">見積</label>
+      <input type="number" id="eEstimate" min="5" step="5" inputmode="numeric" placeholder="分">
     </div>
     <div class="field">
-      <label for="fPriority">優先</label>
-      <select id="fPriority">
+      <label for="eDue">期限</label>
+      <input type="date" id="eDue">
+    </div>
+    <div class="field">
+      <label for="ePriority">優先</label>
+      <select id="ePriority">
         <option value="1">最優先</option>
         <option value="2">急ぎ</option>
-        <option value="3" selected>通常</option>
+        <option value="3">通常</option>
         <option value="4">いつでも</option>
       </select>
     </div>
     <div class="field">
-      <label for="fCategory">分類</label>
-      <select id="fCategory"></select>
+      <label for="eCategory">分類</label>
+      <select id="eCategory"></select>
+    </div>
+    <div class="field" id="eQuantityRow" hidden>
+      <label for="eQuantity">目標数</label>
+      <input type="number" id="eQuantity" min="1" inputmode="numeric">
+    </div>
+    <div class="field" id="eCurrentRow" hidden>
+      <label for="eCurrent">現在</label>
+      <input type="number" id="eCurrent" min="0" inputmode="numeric">
+    </div>
+    <div class="field" id="ePerItemRow" hidden>
+      <label for="ePerItem">1件</label>
+      <input type="number" id="ePerItem" min="1" step="5" inputmode="numeric" placeholder="分">
     </div>
   </div>
-  <button class="bigbtn filled" id="addSave" type="button" disabled>保存</button>
+  <button class="bigbtn filled" id="editApply" type="button">これでいい</button>
 </div>
 
 <!-- 詳細 -->
@@ -396,9 +422,12 @@
 
 <script>
 /**
- * 一言テキストを タイトル / 見積分 / 期限 / 優先度 に分解する。
+ * 一言テキストを タイトル / 見積分 / 期限 / 優先度 に分解し、
+ * さらに**どの形の仕事か**（1回型 / 目標 / 日課 / 案件）を見分ける。
  *
  * 外部依存なし・現在時刻は引数で受け取る（GAS と Node のテストで同じファイルを使う）。
+ * 分類の語や工程の型は、設定や履歴から呼び出し側が options で渡す。
+ * ここに埋め込むと、語が増えるたびに解析器を書き換えることになるため。
  */
 "use strict";
 
@@ -446,7 +475,15 @@ var DP_PARSER = (function () {
     return (jsDay + 6) % 7;
   }
 
-  var UNTIL = "(?:まで(?:に)?)?";
+  /** その月の末日。過ぎていれば翌年に送る。 */
+  function endOfMonth(today, monthIndex) {
+    var d = new Date(today.getFullYear(), monthIndex + 1, 0);
+    if (d < today) d = new Date(today.getFullYear() + 1, monthIndex + 1, 0);
+    return d;
+  }
+
+  // 「金曜まで」「今日中に」「来週までに」——期限の後ろに付く言い回しをまとめて食う。
+  var UNTIL = "(?:(?:まで|中)(?:に)?)?";
 
   /** 先に当たったものが勝つ。長い表現を先に置くこと。 */
   var ESTIMATE_RULES = [
@@ -481,6 +518,16 @@ var DP_PARSER = (function () {
       [new RegExp("今週の?([月火水木金土日])曜?日?" + UNTIL), function (m) {
         return shift(mondayOf(today), weekOffset(WEEKDAYS[m[1]]));
       }],
+      // 曜日を言わない「来週まで」は1週間後、「今週中」は今週の日曜。
+      [new RegExp("来週" + UNTIL), function () { return shift(today, 7); }],
+      [new RegExp("今週" + UNTIL), function () { return shift(mondayOf(today), 6); }],
+      // 「10月末」も「11月まで」も、その月の末日として扱う。
+      [new RegExp("(\\d{1,2})\\s*月末" + UNTIL), function (m) {
+        return endOfMonth(today, Number(m[1]) - 1);
+      }],
+      [new RegExp("(\\d{1,2})\\s*月\\s*(?:まで(?:に)?|をめど|目処)"), function (m) {
+        return endOfMonth(today, Number(m[1]) - 1);
+      }],
       [new RegExp("(\\d+)\\s*月\\s*(\\d+)\\s*日" + UNTIL), function (m) {
         var month = Number(m[1]) - 1;
         var day = Number(m[2]);
@@ -514,14 +561,115 @@ var DP_PARSER = (function () {
     return t === "" ? null : t;
   }
 
+  /* ---------- 形の見分けに使う語 ---------- */
+
+  // 数えられる単位。ここに無いものは数量として扱わない（「第3章」「本を読む」を守る）。
+  var COUNT_UNITS = "人|件|本|回|冊|記事|動画|杯";
+
+  var WEEKDAY_CHARS = "月火水木金土日";
+
+  /** 「1件90分」「1人あたり90分」のような、1件あたりの見積。 */
+  var PER_ITEM_RULES = [
+    [new RegExp("1\\s*(?:" + COUNT_UNITS + ")\\s*(?:あたり|につき)?\\s*(\\d+)\\s*時間\\s*(\\d+)\\s*分"),
+      function (m) { return Number(m[1]) * 60 + Number(m[2]); }],
+    [new RegExp("1\\s*(?:" + COUNT_UNITS + ")\\s*(?:あたり|につき)?\\s*(\\d+)\\s*時間半"),
+      function (m) { return Number(m[1]) * 60 + 30; }],
+    [new RegExp("1\\s*(?:" + COUNT_UNITS + ")\\s*(?:あたり|につき)?\\s*(\\d+)\\s*時間"),
+      function (m) { return Number(m[1]) * 60; }],
+    [new RegExp("1\\s*(?:" + COUNT_UNITS + ")\\s*(?:あたり|につき)?\\s*(\\d+)\\s*分"),
+      function (m) { return Number(m[1]); }]
+  ];
+
+  /** 「現在7人」「7人済み」のような、すでに済んでいる数。 */
+  var CURRENT_RULES = [
+    [new RegExp("(?:現在|いま|すでに)\\s*(\\d+)\\s*(?:" + COUNT_UNITS + ")?"), function (m) { return Number(m[1]); }],
+    [new RegExp("(\\d+)\\s*(?:" + COUNT_UNITS + ")\\s*(?:済み|済|完了|終わり)"), function (m) { return Number(m[1]); }]
+  ];
+
+  function cadenceRules() {
+    return [
+      [/平日/, function () { return { per: "day", weekdays: [1, 2, 3, 4, 5] }; }],
+      [new RegExp("毎週\\s*の?\\s*([" + WEEKDAY_CHARS + "]+)\\s*曜?日?"), function (m) {
+        var out = [];
+        for (var i = 0; i < m[1].length; i++) {
+          var index = WEEKDAY_CHARS.indexOf(m[1].charAt(i));
+          var jsDay = index === 6 ? 0 : index + 1; // 月=1 … 土=6 / 日=0
+          if (out.indexOf(jsDay) < 0) out.push(jsDay);
+        }
+        out.sort(function (a, b) { return a - b; });
+        return { per: "day", weekdays: out };
+      }],
+      [/毎日|毎朝|毎晩|毎夜|日課/, function () { return { per: "day", weekdays: [] }; }],
+      // 「週3本」。数量そのものは後段の takeQuantity に残す。
+      [new RegExp("(?:毎週|週)(?=\\s*\\d+\\s*(?:" + COUNT_UNITS + "))"), function () {
+        return { per: "week", weekdays: [] };
+      }],
+      [/毎週/, function () { return { per: "week", weekdays: [] }; }]
+    ];
+  }
+
+  /** 数量と単位。単位の直前に数字があるときだけ拾う。 */
+  function takeQuantity(text) {
+    var re = new RegExp("(\\d+)\\s*(" + COUNT_UNITS + ")");
+    var m = text.match(re);
+    if (!m) return { value: null, unit: null, rest: text };
+    return { value: Number(m[1]), unit: m[2], rest: text.replace(re, " ") };
+  }
+
+  /** 工程の型。呼び出し側が渡した名前だけを見る。 */
+  function takeProjectType(text, types) {
+    if (!types || !types.length) return { value: null, rest: text };
+    var longest = types.slice().sort(function (a, b) { return b.length - a.length; });
+    for (var i = 0; i < longest.length; i++) {
+      var name = String(longest[i]);
+      if (name && text.indexOf(name) >= 0) {
+        return { value: name, rest: text.replace(name, " ") };
+      }
+    }
+    return { value: null, rest: text };
+  }
+
+  /** 分類。呼び出し側が渡した語だけを見る。当たらなければ null。 */
+  function guessCategory(text, hints) {
+    if (!hints) return null;
+    var lower = text.toLowerCase();
+    for (var name in hints) {
+      if (!Object.prototype.hasOwnProperty.call(hints, name)) continue;
+      var words = hints[name] || [];
+      for (var i = 0; i < words.length; i++) {
+        if (words[i] && lower.indexOf(String(words[i]).toLowerCase()) >= 0) return name;
+      }
+    }
+    return null;
+  }
+
   /**
    * @param {string} text 一言入力
    * @param {Date} now 現在時刻
-   * @returns {{title: string|null, estimateMin: number|null, due: string|null, priority: number}}
+   * @param {{projectTypes?: string[], categoryHints?: Object}} [options]
+   * @returns {{kind: string, title: string|null, estimateMin: number|null, due: string|null,
+   *            priority: number, quantity: number|null, unit: string|null, current: number|null,
+   *            perItemMin: number|null, weekdays: number[]|null, projectType: string|null,
+   *            category: string|null}}
    */
-  function parse(text, now) {
+  function parse(text, now, options) {
+    var opts = options || {};
     var today = startOfDay(now instanceof Date ? now : new Date());
-    var rest = normalize(text);
+    var original = normalize(text);
+    var rest = original;
+
+    // 1件あたりの見積を先に抜く。素の見積規則に「1件90分」の90分を食わせないため。
+    var perItem = takeFirst(rest, PER_ITEM_RULES);
+    rest = perItem.rest;
+
+    var cadence = takeFirst(rest, cadenceRules());
+    rest = cadence.rest;
+
+    var current = takeFirst(rest, CURRENT_RULES);
+    rest = current.rest;
+
+    var quantity = takeQuantity(rest);
+    rest = quantity.rest;
 
     var estimate = takeFirst(rest, ESTIMATE_RULES);
     rest = estimate.rest;
@@ -532,21 +680,128 @@ var DP_PARSER = (function () {
     var due = takeFirst(rest, dueRules(today));
     rest = due.rest;
 
+    var project = takeProjectType(rest, opts.projectTypes);
+    rest = project.rest;
+
+    var estimateMin = estimate.value;
+    var perItemMin = perItem.value;
+    var dueText = due.value ? ymd(due.value) : null;
+
+    var cadenceValue = cadence.value;
+    var kind = "task";
+    if (cadenceValue) kind = "routine";
+    else if (quantity.value !== null && quantity.unit && dueText) kind = "goal";
+    else if (project.value) kind = "project";
+
+    // 数で数える目標・日課で、1件あたりが書かれていなければ、素の見積をそれとみなす。
+    // 「取材20件 45分」の45分は合計ではなく1件ぶん、と読むのが自然なため。
+    if ((kind === "goal" || kind === "routine") && quantity.value !== null && perItemMin == null && estimateMin != null) {
+      perItemMin = estimateMin;
+      estimateMin = null;
+    }
+
     return {
+      kind: kind,
       title: cleanTitle(rest),
-      estimateMin: estimate.value,
-      due: due.value ? ymd(due.value) : null,
-      priority: priority.value == null ? DEFAULT_PRIORITY : priority.value
+      estimateMin: estimateMin,
+      due: dueText,
+      priority: priority.value == null ? DEFAULT_PRIORITY : priority.value,
+      quantity: quantity.value,
+      unit: quantity.unit,
+      current: current.value,
+      perItemMin: perItemMin,
+      per: cadenceValue ? cadenceValue.per : null,
+      weekdays: cadenceValue && cadenceValue.weekdays.length ? cadenceValue.weekdays : null,
+      projectType: project.value,
+      category: guessCategory(original, opts.categoryHints)
     };
   }
 
-  return { parse: parse };
+  /* ---------- 喋った塊を項目に割る ---------- */
+
+  /**
+   * 区切りには強弱がある。
+   *   強い（。改行）… 話が切り替わる。題の無い断片は「ここから先の見出し」
+   *   弱い（、あと）… 同じ話の続き。題の無い断片は「直前の項目の補足」
+   * この区別が無いと「取材150人、10月末まで」の後半が独立した項目になってしまう。
+   */
+  function splitFragments(text) {
+    var re = /([\n。！!？?]+)|([、,]+)|(そのあと|それから|あとは|あと(?!で)|次に|つぎに|加えて|あわせて)/g;
+    var pieces = [];
+    var last = 0;
+    var sepBefore = null;
+    var m;
+
+    while ((m = re.exec(text)) !== null) {
+      pieces.push({ text: text.slice(last, m.index), sepBefore: sepBefore });
+      sepBefore = m[1] ? "strong" : "weak";
+      last = re.lastIndex;
+    }
+    pieces.push({ text: text.slice(last), sepBefore: sepBefore });
+
+    var out = [];
+    var carried = null;
+    for (var i = 0; i < pieces.length; i++) {
+      var body = pieces[i].text.trim();
+      var sep = pieces[i].sepBefore;
+      if (carried === "strong" || sep === "strong") sep = "strong";
+      else if (carried === "weak" && sep === null) sep = "weak";
+
+      if (body === "") { carried = sep; continue; }
+      out.push({ text: body, sepBefore: sep });
+      carried = null;
+    }
+    return out;
+  }
+
+  /**
+   * 喋った一塊を、複数の項目に分けて返す。
+   *
+   * タイピングを避けるための入口。項目ごとに形（1回型/目標/日課/案件）と
+   * 分類と期限まで見分けるので、あとは確認して保存するだけにできる。
+   *
+   * @returns {Array} parse() と同じ形のオブジェクトの配列
+   */
+  function parseMany(text, now, options) {
+    var frags = splitFragments(normalize(text));
+    var items = [];
+    var header = null;
+
+    for (var i = 0; i < frags.length; i++) {
+      var frag = frags[i];
+      var result = parse(frag.text, now, options);
+
+      if (result.title) {
+        items.push({ raw: frag.text, result: result, header: header });
+        continue;
+      }
+
+      // 題が無い断片。強い区切りの後（か先頭）なら見出し、そうでなければ直前の補足。
+      var isHeader = items.length === 0 || frag.sepBefore === "strong";
+      if (isHeader) {
+        if (result.due || result.weekdays) header = result;
+      } else {
+        var prev = items[items.length - 1];
+        prev.raw = prev.raw + " " + frag.text;
+        prev.result = parse(prev.raw, now, options);
+      }
+    }
+
+    return items.map(function (item) {
+      var result = item.result;
+      if (item.header && !result.due && item.header.due) result.due = item.header.due;
+      return result;
+    });
+  }
+
+  return { parse: parse, parseMany: parseMany };
 })();
 
 var parse = DP_PARSER.parse;
+var parseMany = DP_PARSER.parseMany;
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { parse: DP_PARSER.parse };
+  module.exports = { parse: DP_PARSER.parse, parseMany: DP_PARSER.parseMany };
 }
 
 </script>
@@ -1090,18 +1345,19 @@ if (typeof module !== "undefined" && module.exports) {
     return cell;
   }
 
-  /* ---------- 追加 ---------- */
+  /* ---------- 追加：喋った塊を仕分けて、確認して、まとめて保存 ---------- */
+
+  var DEFAULT_ESTIMATE = 30; // 見積を言わなかったときの仮の値。確認画面で直せる。
+  var KIND_LABEL = { task: "1回", goal: "目標", routine: "日課", project: "案件" };
+  var review = [];   // 仕分けた結果。確認画面で編集される
+  var editingIndex = -1;
 
   function openAdd() {
-    state.touched = {};
     $("catchInput").value = "";
-    $("fEstimate").value = "";
-    $("fDue").value = "";
-    $("fPriority").value = "3";
     $("addMsg").textContent = "";
-    $("parsedHint").textContent = "";
-    fillCategories();
-    updateSaveState();
+    $("reviewMsg").textContent = "";
+    review = [];
+    showStage("speak");
     $("addBackdrop").hidden = false;
     $("addSheet").hidden = false;
     // ここで入力欄にフォーカスしない。iOSでキーボードが出ると音声認識が止まるため。
@@ -1113,8 +1369,229 @@ if (typeof module !== "undefined" && module.exports) {
     $("addSheet").hidden = true;
   }
 
-  function fillCategories() {
-    var select = $("fCategory");
+  function showStage(name) {
+    $("stageSpeak").hidden = name !== "speak";
+    $("stageReview").hidden = name !== "review";
+    $("addStageTitle").textContent = name === "speak" ? "追加" : "これでいいですか";
+  }
+
+  function parserOptions() {
+    var settings = state.settings || {};
+    return {
+      projectTypes: settings.projectTypes || [],
+      categoryHints: settings.categoryHints || null
+    };
+  }
+
+  function updateSaveState() {
+    $("toReview").disabled = !($("catchInput").value || "").trim();
+  }
+
+  /** 喋った塊を項目に割って、確認画面へ。 */
+  function toReview() {
+    var text = $("catchInput").value.trim();
+    if (!text) return;
+    if (typeof parseMany !== "function") {
+      $("addMsg").textContent = "解析を読み込めていません。画面を更新してください。";
+      return;
+    }
+
+    review = parseMany(text, new Date(), parserOptions()).map(function (r) {
+      return {
+        kind: r.kind === "project" ? "task" : r.kind, // 案件はまだ作れないので1回型に寄せる
+        title: r.title,
+        estimateMin: r.estimateMin || (r.perItemMin ? null : DEFAULT_ESTIMATE),
+        provisional: !r.estimateMin && !r.perItemMin,
+        due: r.due,
+        priority: r.priority,
+        category: r.category || (state.settings && state.settings.defaultCategory) || null,
+        quantity: r.quantity,
+        unit: r.unit,
+        current: r.current || 0,
+        perItemMin: r.perItemMin || (r.kind === "goal" || (r.kind === "routine" && r.quantity) ? DEFAULT_ESTIMATE : null),
+        per: r.per,
+        weekdays: r.weekdays
+      };
+    });
+
+    if (!review.length) {
+      $("addMsg").textContent = "項目を取り出せませんでした。言い直してください。";
+      return;
+    }
+    showStage("review");
+    renderReview();
+  }
+
+  /** 今日 / 明日 / 一週間以内 / 二週間以内 / それ以降 / 期限なし に振り分けて見せる。 */
+  function reviewBuckets() {
+    var today = todayKey();
+    var groups = [
+      { label: "毎日・毎週", test: function (r) { return r.kind === "routine"; } },
+      { label: "今日", test: function (r) { return r.due && r.due <= today; } },
+      { label: "明日", test: function (r) { return r.due === addDaysKey(today, 1); } },
+      { label: "一週間以内", test: function (r) { return r.due && r.due <= addDaysKey(today, 7); } },
+      { label: "二週間以内", test: function (r) { return r.due && r.due <= addDaysKey(today, 14); } },
+      { label: "それ以降", test: function (r) { return !!r.due; } },
+      { label: "いつでも", test: function () { return true; } }
+    ];
+
+    var used = {};
+    return groups.map(function (g) {
+      var rows = [];
+      review.forEach(function (r, i) {
+        if (used[i] || !g.test(r)) return;
+        used[i] = true;
+        rows.push({ item: r, index: i });
+      });
+      return { label: g.label, rows: rows };
+    }).filter(function (g) { return g.rows.length; });
+  }
+
+  function renderReview() {
+    var box = $("reviewList");
+    box.textContent = "";
+
+    var minutes = review.reduce(function (sum, r) {
+      return sum + (r.estimateMin || (r.quantity || 0) * (r.perItemMin || 0));
+    }, 0);
+    $("reviewSummary").textContent = review.length + "件 / 合わせて " + hoursMinutes(minutes);
+
+    reviewBuckets().forEach(function (group) {
+      var title = document.createElement("div");
+      title.className = "group-title";
+      title.textContent = group.label;
+      box.appendChild(title);
+
+      var wrap = document.createElement("div");
+      wrap.className = "group";
+      group.rows.forEach(function (row) { wrap.appendChild(reviewCell(row.item, row.index)); });
+      box.appendChild(wrap);
+    });
+  }
+
+  function reviewCell(item, index) {
+    var cell = document.createElement("div");
+    cell.className = "cell";
+
+    var inner = document.createElement("div");
+    inner.className = "inner";
+    inner.style.gridTemplateColumns = "40px minmax(0,1fr) auto";
+
+    var badge = document.createElement("span");
+    badge.className = "kind-badge";
+    badge.textContent = KIND_LABEL[item.kind] || "1回";
+
+    var mid = document.createElement("button");
+    mid.type = "button";
+    mid.style.textAlign = "left";
+    mid.style.width = "100%";
+    var name = document.createElement("span");
+    name.className = "title";
+    name.textContent = item.title;
+    var meta = document.createElement("span");
+    meta.className = "meta";
+    meta.textContent = reviewMeta(item);
+    mid.appendChild(name);
+    mid.appendChild(document.createElement("br"));
+    mid.appendChild(meta);
+    mid.addEventListener("click", function () { openEdit(index); });
+
+    var right = document.createElement("span");
+    right.className = "right";
+    var dot = document.createElement("span");
+    dot.className = "dot";
+    dot.style.setProperty("--cat", categoryVar(item.category));
+    right.appendChild(dot);
+    var drop = document.createElement("button");
+    drop.type = "button";
+    drop.textContent = "×";
+    drop.setAttribute("aria-label", "この項目を消す");
+    drop.style.color = "var(--text-3)";
+    drop.style.fontSize = "20px";
+    drop.style.padding = "0 4px";
+    drop.addEventListener("click", function () {
+      review.splice(index, 1);
+      if (!review.length) { showStage("speak"); return; }
+      renderReview();
+    });
+    right.appendChild(drop);
+
+    inner.appendChild(badge);
+    inner.appendChild(mid);
+    inner.appendChild(right);
+    cell.appendChild(inner);
+    return cell;
+  }
+
+  function reviewMeta(item) {
+    var bits = [];
+    if (item.category) bits.push(item.category);
+    if (item.kind === "goal") {
+      bits.push(item.quantity + (item.unit || "件") + "（現在" + (item.current || 0) + "）");
+      bits.push("1件" + item.perItemMin + "分");
+    } else if (item.kind === "routine") {
+      if (item.quantity) bits.push(item.quantity + (item.unit || "件") + (item.per === "week" ? "/週" : "/日"));
+      if (item.perItemMin) bits.push("1件" + item.perItemMin + "分");
+      if (item.estimateMin) bits.push(item.estimateMin + "分");
+      if (item.weekdays) bits.push(item.weekdays.map(function (d) { return "日月火水木金土"[d]; }).join(""));
+    } else {
+      bits.push(item.estimateMin + "分" + (item.provisional ? "（仮）" : ""));
+      if (item.due) bits.push(item.due.slice(5).replace("-", "/"));
+    }
+    return bits.join(" · ");
+  }
+
+  /* ---------- 1件を直す ---------- */
+
+  function openEdit(index) {
+    editingIndex = index;
+    var item = review[index];
+    $("eTitle").value = item.title || "";
+    $("eKind").value = item.kind;
+    $("eEstimate").value = item.estimateMin || "";
+    $("eDue").value = item.due || "";
+    $("ePriority").value = String(item.priority || 3);
+    $("eQuantity").value = item.quantity || "";
+    $("eCurrent").value = item.current || 0;
+    $("ePerItem").value = item.perItemMin || "";
+    fillCategories($("eCategory"), item.category);
+    syncEditRows();
+    $("editBackdrop").hidden = false;
+    $("editSheet").hidden = false;
+  }
+
+  function syncEditRows() {
+    var kind = $("eKind").value;
+    $("eQuantityRow").hidden = kind === "task";
+    $("eCurrentRow").hidden = kind !== "goal";
+    $("ePerItemRow").hidden = kind === "task";
+  }
+
+  function closeEdit() {
+    $("editBackdrop").hidden = true;
+    $("editSheet").hidden = true;
+    editingIndex = -1;
+  }
+
+  function applyEdit() {
+    if (editingIndex < 0) return;
+    var item = review[editingIndex];
+    item.title = $("eTitle").value.trim() || item.title;
+    item.kind = $("eKind").value;
+    item.estimateMin = Number($("eEstimate").value) || null;
+    item.provisional = false;
+    item.due = $("eDue").value || null;
+    item.priority = Number($("ePriority").value) || 3;
+    item.category = $("eCategory").value;
+    item.quantity = Number($("eQuantity").value) || null;
+    item.current = Number($("eCurrent").value) || 0;
+    item.perItemMin = Number($("ePerItem").value) || null;
+    if (item.kind === "task" && !item.estimateMin) item.estimateMin = DEFAULT_ESTIMATE;
+    closeEdit();
+    renderReview();
+  }
+
+  function fillCategories(select, selected) {
     select.textContent = "";
     var cats = (state.settings && state.settings.categories) || ["仕事", "大学", "個人"];
     cats.forEach(function (c) {
@@ -1123,53 +1600,70 @@ if (typeof module !== "undefined" && module.exports) {
       opt.textContent = c;
       select.appendChild(opt);
     });
-    if (state.settings && state.settings.defaultCategory) select.value = state.settings.defaultCategory;
+    if (selected) select.value = selected;
+    else if (state.settings && state.settings.defaultCategory) select.value = state.settings.defaultCategory;
   }
 
-  function applyParse(text) {
-    if (typeof parse !== "function") return;
-    var r = parse(text, new Date());
-    $("parsedHint").textContent = r.title ? "タイトル: " + r.title : "";
-    if (r.estimateMin && !state.touched.estimate) $("fEstimate").value = r.estimateMin;
-    if (r.due && !state.touched.due) $("fDue").value = r.due;
-    if (!state.touched.priority) $("fPriority").value = String(r.priority);
-    updateSaveState();
-  }
+  /* ---------- まとめて保存 ---------- */
 
-  function updateSaveState() {
-    var hasTitle = !!($("catchInput").value || "").trim();
-    var hasEstimate = Number($("fEstimate").value) > 0;
-    $("addSave").disabled = !(hasTitle && hasEstimate);
-  }
+  function saveAll() {
+    if (!review.length) return;
+    $("saveAll").disabled = true;
+    $("reviewMsg").textContent = "保存しています";
 
-  function saveTask() {
-    var raw = $("catchInput").value.trim();
-    var parsed = typeof parse === "function" ? parse(raw, new Date()) : { title: raw };
-    var title = parsed.title || raw;
-    var estimate = Number($("fEstimate").value);
-    if (!title || !(estimate > 0)) return;
-
-    $("addSave").disabled = true;
-    $("addMsg").textContent = "";
-
-    call("addTask", {
-      task: {
-        title: title,
-        estimateMin: estimate,
-        due: $("fDue").value || "",
-        priority: Number($("fPriority").value),
-        category: $("fCategory").value,
-        source: state.usedVoice ? "音声" : "手入力"
+    var jobs = review.map(function (item) {
+      if (item.kind === "goal") {
+        return call("addGoal", {
+          goal: {
+            name: item.title,
+            category: item.category,
+            target: item.quantity,
+            unit: item.unit || "件",
+            current: item.current || 0,
+            startDate: todayKey(),
+            due: item.due,
+            perItemMin: item.perItemMin || DEFAULT_ESTIMATE,
+            dailyCap: 0,
+            priority: item.priority
+          }
+        });
       }
-    })
+      if (item.kind === "routine") {
+        return call("addRoutine", {
+          routine: {
+            name: item.title,
+            category: item.category,
+            quantity: item.quantity || null,
+            unit: item.unit || null,
+            per: item.per || "day",
+            perItemMin: item.perItemMin || null,
+            minutes: item.quantity ? null : (item.estimateMin || DEFAULT_ESTIMATE),
+            weekdays: item.weekdays || null,
+            priority: item.priority
+          }
+        });
+      }
+      return call("addTask", {
+        task: {
+          title: item.title,
+          estimateMin: item.estimateMin || DEFAULT_ESTIMATE,
+          due: item.due || "",
+          priority: item.priority,
+          category: item.category,
+          source: state.usedVoice ? "音声" : "手入力"
+        }
+      });
+    });
+
+    Promise.all(jobs)
       .then(function () {
-        logKpi("add", Date.now() - state.addOpenedAt);
+        logKpi("addMany", Date.now() - state.addOpenedAt);
         closeAdd();
         return refreshAll();
       })
       .catch(function (err) {
-        $("addMsg").textContent = err.message;
-        $("addSave").disabled = false;
+        $("reviewMsg").textContent = err.message;
+        $("saveAll").disabled = false;
       });
   }
 
@@ -1204,7 +1698,7 @@ if (typeof module !== "undefined" && module.exports) {
       var text = "";
       for (var i = 0; i < e.results.length; i++) text += e.results[i][0].transcript;
       $("catchInput").value = text;
-      applyParse(text);
+      updateSaveState();
     };
     recognition.onerror = function (e) {
       gotError = true;
@@ -1563,11 +2057,14 @@ if (typeof module !== "undefined" && module.exports) {
     });
     $("addCancel").addEventListener("click", closeAdd);
     $("addBackdrop").addEventListener("click", closeAdd);
-    $("addSave").addEventListener("click", saveTask);
-    $("catchInput").addEventListener("input", function () { applyParse(this.value); });
-    $("fEstimate").addEventListener("input", function () { state.touched.estimate = true; updateSaveState(); });
-    $("fDue").addEventListener("input", function () { state.touched.due = true; });
-    $("fPriority").addEventListener("change", function () { state.touched.priority = true; });
+    $("catchInput").addEventListener("input", updateSaveState);
+    $("toReview").addEventListener("click", toReview);
+    $("saveAll").addEventListener("click", saveAll);
+    $("backToSpeak").addEventListener("click", function () { showStage("speak"); });
+    $("editClose").addEventListener("click", closeEdit);
+    $("editBackdrop").addEventListener("click", closeEdit);
+    $("editApply").addEventListener("click", applyEdit);
+    $("eKind").addEventListener("change", syncEditRows);
 
     var mic = $("micBtn");
     if (!voiceSupported()) mic.hidden = true;
