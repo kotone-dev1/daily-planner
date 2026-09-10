@@ -63,6 +63,17 @@
   }
   .head h1 { margin: 0; font-size: 34px; font-weight: 600; letter-spacing: -.02em; }
   .head .sub { margin-left: auto; font-size: 15px; color: var(--text-2); padding-bottom: 6px; }
+  .head h1 { font-size: 30px; }
+  .daytag {
+    font-size: 13px; color: #000; background: var(--accent);
+    border-radius: 5px; padding: 1px 7px; margin-bottom: 8px;
+  }
+  .daytag:empty { display: none; }
+  .planbtn {
+    display: block; width: calc(100% - 32px); margin: 4px 16px 8px;
+    min-height: 44px; border-radius: var(--radius);
+    background: var(--row); color: var(--accent); font-size: 15px; font-weight: 600;
+  }
   .backrow { padding: calc(6px + env(safe-area-inset-top)) 12px 0; }
   .backrow button {
     display: inline-flex; align-items: center; gap: 4px;
@@ -283,8 +294,10 @@
       </div>
       <div class="head">
         <h1 id="dayTitle">今日</h1>
+        <span class="daytag" id="daySub"></span>
         <span class="sub num" id="dayTotals"></span>
       </div>
+      <button class="planbtn" id="planDayBtn" type="button">今日の予定を言う</button>
       <div class="banner" id="staleBar" hidden>更新できていません</div>
       <div id="alertsBox"></div>
       <div id="dayBody"></div>
@@ -404,6 +417,31 @@
   <button class="bigbtn filled" id="editApply" type="button">これでいい</button>
 </div>
 
+
+<!-- 今日を組む：先に埋まっている予定を喋る -->
+<div class="backdrop" id="planBackdrop" hidden></div>
+<div class="sheet" id="planSheet" hidden role="dialog" aria-label="今日の予定">
+  <div class="grabber"></div>
+  <div class="sheet-head">
+    <span class="t" id="planTitle">今日の予定</span>
+    <button type="button" id="planCancel">閉じる</button>
+  </div>
+  <div class="parsed" id="planAsk">すでに埋まっている時間を言ってください。残りにタスクを入れます。</div>
+  <div class="catch">
+    <textarea id="planInput" rows="3" placeholder="例）バイト10時から17時、そのあと会議18時から19時"></textarea>
+  </div>
+  <button class="mic" type="button" id="planMic" data-listening="false">
+    <svg width="17" height="17" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5">
+      <rect x="5.75" y="1.75" width="4.5" height="8" rx="2.25"></rect>
+      <path d="M3.25 7.5a4.75 4.75 0 0 0 9.5 0M8 12.25v2"></path>
+    </svg>
+    <span id="planMicLabel">話す</span>
+  </button>
+  <div class="msg" id="planMsg"></div>
+  <div id="planPreview"></div>
+  <button class="bigbtn filled" id="planApply" type="button" disabled>これで組む</button>
+</div>
+
 <!-- 詳細 -->
 <div class="backdrop" id="detailBackdrop" hidden></div>
 <div class="sheet" id="detailSheet" hidden role="dialog" aria-label="タスクの詳細">
@@ -440,13 +478,42 @@ var DP_PARSER = (function () {
   var DEFAULT_PRIORITY = 3;
   var WEEKDAYS = { 日: 0, 月: 1, 火: 2, 水: 3, 木: 4, 金: 5, 土: 6 };
 
+  var KANJI_DIGITS = { 〇: 0, 零: 0, 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+
+  /**
+   * 「十時」「二十人」「九十分」のような漢数字を半角に直す。
+   * 音声認識が数字を漢字で返すことがあり、そのままだと解析が丸ごと外れるため。
+   * 扱うのは99までの素直な形だけ（百以上や「四半期」のような語は触らない）。
+   */
+  function kanjiToNumber(text) {
+    return text.replace(/[〇零一二三四五六七八九十]+/g, function (chunk) {
+      if (chunk === "十") return "10";
+      var tens = chunk.indexOf("十");
+      if (tens < 0) {
+        var digits = "";
+        for (var i = 0; i < chunk.length; i++) {
+          if (KANJI_DIGITS[chunk.charAt(i)] === undefined) return chunk;
+          digits += KANJI_DIGITS[chunk.charAt(i)];
+        }
+        return digits;
+      }
+      var head = chunk.slice(0, tens);
+      var tail = chunk.slice(tens + 1);
+      if (head.length > 1 || tail.length > 1) return chunk;
+      var value = (head === "" ? 1 : KANJI_DIGITS[head]) * 10 + (tail === "" ? 0 : KANJI_DIGITS[tail]);
+      return isFinite(value) ? String(value) : chunk;
+    });
+  }
+
   function normalize(text) {
-    return String(text == null ? "" : text)
-      .replace(/[０-９]/g, function (c) {
-        return String.fromCharCode(c.charCodeAt(0) - 0xfee0);
-      })
-      .replace(/　/g, " ")
-      .replace(/[：]/g, ":");
+    return kanjiToNumber(
+      String(text == null ? "" : text)
+        .replace(/[０-９]/g, function (c) {
+          return String.fromCharCode(c.charCodeAt(0) - 0xfee0);
+        })
+        .replace(/　/g, " ")
+        .replace(/[：]/g, ":")
+    );
   }
 
   function ymd(d) {
@@ -823,14 +890,75 @@ var DP_PARSER = (function () {
     });
   }
 
-  return { parse: parse, parseMany: parseMany };
+  /* ---------- すでに決まっている予定（バイト・授業など） ---------- */
+
+  var CLOCK = "(\\d{1,2})\\s*(?::\\s*(\\d{2})|時\\s*(半)?(?:(\\d{1,2})\\s*分)?)";
+  var RANGE_SEP = "\\s*(?:から|〜|～|-|–|ー|to)\\s*";
+
+  function clockMinutes(hour, colonMin, half, min) {
+    var h = Number(hour);
+    var m = 0;
+    if (colonMin !== undefined && colonMin !== "") m = Number(colonMin);
+    else if (half) m = 30;
+    else if (min !== undefined && min !== "") m = Number(min);
+    if (!isFinite(h) || h > 47 || m > 59) return null;
+    return h * 60 + m;
+  }
+
+  function hhmm(minutes) {
+    return String(Math.floor(minutes / 60)).padStart(2, "0") + ":" + String(minutes % 60).padStart(2, "0");
+  }
+
+  /**
+   * 「バイト 10時から17時」のような、動かせない予定を取り出す。
+   * 時刻の幅が読めた断片だけを返す。読めないものはタスク側で扱う。
+   */
+  function parseFixed(text, now) {
+    var frags = splitFragments(normalize(text));
+    var rangeRe = new RegExp(CLOCK + RANGE_SEP + CLOCK);
+    var durationRe = new RegExp(CLOCK + RANGE_SEP + "(\\d+)\\s*(時間半|時間|分)");
+    var out = [];
+
+    for (var i = 0; i < frags.length; i++) {
+      var body = frags[i].text;
+      var start = null;
+      var end = null;
+      var consumed = "";
+
+      // 長さの言い方を先に見る。「13時から2時間」の「2時間」を
+      // 終わりの時刻（2時）と読み違えないため。
+      var d = body.match(durationRe);
+      if (d) {
+        start = clockMinutes(d[1], d[2], d[3], d[4]);
+        var amount = Number(d[5]);
+        var span = d[6] === "分" ? amount : d[6] === "時間半" ? amount * 60 + 30 : amount * 60;
+        end = start == null ? null : start + span;
+        consumed = d[0];
+      } else {
+        var m = body.match(rangeRe);
+        if (m) {
+          start = clockMinutes(m[1], m[2], m[3], m[4]);
+          end = clockMinutes(m[5], m[6], m[7], m[8]);
+          consumed = m[0];
+        }
+      }
+
+      if (start == null || end == null || end <= start || end > 1440) continue;
+
+      var title = cleanTitle(body.replace(consumed, " "));
+      out.push({ title: title || "予定", start: hhmm(start), end: hhmm(end) });
+    }
+    return out;
+  }
+
+  return { parse: parse, parseMany: parseMany, parseFixed: parseFixed };
 })();
 
 var parse = DP_PARSER.parse;
 var parseMany = DP_PARSER.parseMany;
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { parse: DP_PARSER.parse, parseMany: DP_PARSER.parseMany };
+  module.exports = { parse: DP_PARSER.parse, parseMany: DP_PARSER.parseMany, parseFixed: DP_PARSER.parseFixed };
 }
 
 </script>
@@ -1041,7 +1169,8 @@ if (typeof module !== "undefined" && module.exports) {
     var isToday = data.date === todayKey();
 
     $("backRow").hidden = isToday;
-    $("dayTitle").textContent = isToday ? "今日" : dateLabel(data.date);
+    $("dayTitle").textContent = dateLabel(data.date) + (isToday ? "" : "");
+    $("daySub").textContent = isToday ? "今日" : "";
     $("dayTotals").textContent = data.plannedMin
       ? hoursMinutes(data.plannedMin) + " / 空き " + hoursMinutes(data.freeMin)
       : "空き " + hoursMinutes(data.freeMin);
@@ -1398,7 +1527,7 @@ if (typeof module !== "undefined" && module.exports) {
 
   function openAdd() {
     $("catchInput").value = "";
-    $("addMsg").textContent = "";
+    $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "";
     $("reviewMsg").textContent = "";
     review = [];
     showStage("speak");
@@ -1436,7 +1565,7 @@ if (typeof module !== "undefined" && module.exports) {
     var text = $("catchInput").value.trim();
     if (!text) return;
     if (typeof parseMany !== "function") {
-      $("addMsg").textContent = "解析を読み込めていません。画面を更新してください。";
+      $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "解析を読み込めていません。画面を更新してください。";
       return;
     }
 
@@ -1460,7 +1589,7 @@ if (typeof module !== "undefined" && module.exports) {
     });
 
     if (!review.length) {
-      $("addMsg").textContent = "項目を取り出せませんでした。言い直してください。";
+      $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "項目を取り出せませんでした。言い直してください。";
       return;
     }
     showStage("review");
@@ -1729,6 +1858,141 @@ if (typeof module !== "undefined" && module.exports) {
       });
   }
 
+  /* ---------- 今日を組む：先に埋まっている時間を喋る ---------- */
+
+  var planPreview = [];
+
+  function openPlan() {
+    $("planInput").value = "";
+    $("planMsg").textContent = "";
+    planPreview = [];
+    renderPlanPreview();
+    $("planTitle").textContent = dateLabel(state.dayKey || todayKey()) + " の予定";
+    $("planBackdrop").hidden = false;
+    $("planSheet").hidden = false;
+    loadFixedForDay();
+    // ここでも入力欄にフォーカスしない（キーボードが出ると音声が止まる）
+  }
+
+  function closePlan() {
+    stopVoice();
+    $("planBackdrop").hidden = true;
+    $("planSheet").hidden = true;
+  }
+
+  /** すでに登録してある固定予定を出しておく。言い直すと丸ごと置き換わる。 */
+  function loadFixedForDay() {
+    var day = state.dayKey || todayKey();
+    call("listFixedEvents", { from: day, to: day })
+      .then(function (data) {
+        if (!data.events.length) return;
+        planPreview = data.events.map(function (e) {
+          return { title: e.title, start: e.start, end: e.end };
+        });
+        renderPlanPreview();
+      })
+      .catch(function () {});
+  }
+
+  function parsePlanInput() {
+    var text = $("planInput").value.trim();
+    if (!text) return;
+    if (typeof parseFixed !== "function") {
+      $("planMsg").textContent = "解析を読み込めていません。画面を更新してください。";
+      return;
+    }
+    var found = parseFixed(text, new Date());
+    if (!found.length) {
+      $("planMsg").textContent = "時刻が読み取れませんでした。「10時から17時」のように言ってください。";
+      return;
+    }
+    $("planMsg").textContent = "";
+    planPreview = found;
+    renderPlanPreview();
+  }
+
+  function renderPlanPreview() {
+    var box = $("planPreview");
+    box.textContent = "";
+    $("planApply").disabled = false;
+
+    if (!planPreview.length) {
+      var none = document.createElement("div");
+      none.className = "parsed";
+      none.textContent = "埋まっている時間なし。1日ぜんぶ使えます。";
+      box.appendChild(none);
+      return;
+    }
+
+    var title = document.createElement("div");
+    title.className = "group-title";
+    title.textContent = "埋まっている時間";
+    box.appendChild(title);
+
+    var group = document.createElement("div");
+    group.className = "group";
+    planPreview.forEach(function (item, index) {
+      var cell = document.createElement("div");
+      cell.className = "cell";
+      var inner = document.createElement("div");
+      inner.className = "inner";
+
+      var time = document.createElement("span");
+      time.className = "time";
+      time.textContent = item.start;
+
+      var mid = document.createElement("span");
+      var name = document.createElement("span");
+      name.className = "title";
+      name.textContent = item.title;
+      var meta = document.createElement("span");
+      meta.className = "meta";
+      meta.textContent = item.start + "–" + item.end;
+      mid.appendChild(name);
+      mid.appendChild(document.createElement("br"));
+      mid.appendChild(meta);
+
+      var right = document.createElement("span");
+      right.className = "right";
+      var drop = document.createElement("button");
+      drop.type = "button";
+      drop.textContent = "×";
+      drop.setAttribute("aria-label", "消す");
+      drop.style.color = "var(--text-3)";
+      drop.style.fontSize = "20px";
+      drop.style.padding = "0 4px";
+      drop.addEventListener("click", function () {
+        planPreview.splice(index, 1);
+        renderPlanPreview();
+      });
+      right.appendChild(drop);
+
+      inner.appendChild(time);
+      inner.appendChild(mid);
+      inner.appendChild(right);
+      cell.appendChild(inner);
+      group.appendChild(cell);
+    });
+    box.appendChild(group);
+  }
+
+  function applyPlan() {
+    var day = state.dayKey || todayKey();
+    $("planApply").disabled = true;
+    $("planMsg").textContent = "組んでいます";
+
+    call("setFixedEvents", { date: day, items: planPreview })
+      .then(function () { return call("regenerate", { now: new Date().toISOString() }); })
+      .then(function () {
+        closePlan();
+        return refreshAll();
+      })
+      .catch(function (err) {
+        $("planMsg").textContent = err.message;
+        $("planApply").disabled = false;
+      });
+  }
+
   /* ---------- 音声 ---------- */
 
   var recognition = null;
@@ -1737,11 +2001,14 @@ if (typeof module !== "undefined" && module.exports) {
     return !!(window.DP_VOICE && (window.SpeechRecognition || window.webkitSpeechRecognition));
   }
 
-  function startVoice() {
+  var voiceTarget = "catchInput";
+
+  function startVoice(target) {
+    voiceTarget = target || "catchInput";
     if (recognition) { stopVoice(); return; }
     var Recognizer = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!Recognizer) {
-      $("addMsg").textContent = "この端末では音声入力を使えません。文字で入力してください。";
+      $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "この端末では音声入力を使えません。文字で入力してください。";
       return;
     }
 
@@ -1754,35 +2021,36 @@ if (typeof module !== "undefined" && module.exports) {
     var gotResult = false;
     var gotError = false;
 
-    recognition.onstart = function () { setMic(true); $("addMsg").textContent = ""; };
+    recognition.onstart = function () { setMic(true); $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = ""; };
     recognition.onresult = function (e) {
       gotResult = true;
       var text = "";
       for (var i = 0; i < e.results.length; i++) text += e.results[i][0].transcript;
-      $("catchInput").value = text;
-      updateSaveState();
+      $(voiceTarget).value = text;
+      if (voiceTarget === "catchInput") updateSaveState();
+      else parsePlanInput();
     };
     recognition.onerror = function (e) {
       gotError = true;
       var code = e && e.error ? e.error : "unknown";
       if (code === "not-allowed" || code === "service-not-allowed") {
-        $("addMsg").textContent = "マイクが許可されていません（" + code + "）。";
-        $("catchInput").focus(); // マイクを開けなかったときだけフォーカスする
+        $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "マイクが許可されていません（" + code + "）。";
+        $(voiceTarget).focus(); // マイクを開けなかったときだけフォーカスする
       } else if (code === "no-speech") {
-        $("addMsg").textContent = "聞き取れませんでした。もう一度押して話してください。";
+        $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "聞き取れませんでした。もう一度押して話してください。";
       } else if (code === "audio-capture") {
-        $("addMsg").textContent = "マイクが見つかりませんでした（audio-capture）。";
+        $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "マイクが見つかりませんでした（audio-capture）。";
       } else if (code === "language-not-supported") {
-        $("addMsg").textContent = "この端末は日本語の音声認識に対応していません。";
+        $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "この端末は日本語の音声認識に対応していません。";
       } else {
-        $("addMsg").textContent = "音声を認識できませんでした（" + code + "）。";
+        $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "音声を認識できませんでした（" + code + "）。";
       }
     };
     recognition.onend = function () {
       setMic(false);
       recognition = null;
       if (!gotResult && !gotError) {
-        $("addMsg").textContent = "認識が始まらずに終了しました。文字で入力してください。";
+        $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "認識が始まらずに終了しました。文字で入力してください。";
       }
     };
 
@@ -1790,8 +2058,8 @@ if (typeof module !== "undefined" && module.exports) {
     catch (err) {
       setMic(false);
       recognition = null;
-      $("addMsg").textContent = "マイクを開けませんでした（" + String(err && err.name || err) + "）。";
-      $("catchInput").focus();
+      $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "マイクを開けませんでした（" + String(err && err.name || err) + "）。";
+      $(voiceTarget).focus();
     }
   }
 
@@ -1803,10 +2071,12 @@ if (typeof module !== "undefined" && module.exports) {
   }
 
   function setMic(listening) {
-    var btn = $("micBtn");
+    var isPlan = voiceTarget === "planInput";
+    var btn = $(isPlan ? "planMic" : "micBtn");
+    var label = $(isPlan ? "planMicLabel" : "micLabel");
     if (!btn) return;
     btn.setAttribute("data-listening", listening ? "true" : "false");
-    $("micLabel").textContent = listening ? "聞いています（押すと止まる）" : "話して追加";
+    label.textContent = listening ? "聞いています（押すと止まる）" : (isPlan ? "話す" : "話して追加");
   }
 
   /* ---------- 詳細 ---------- */
@@ -2130,7 +2400,16 @@ if (typeof module !== "undefined" && module.exports) {
 
     var mic = $("micBtn");
     if (!voiceSupported()) mic.hidden = true;
-    else mic.addEventListener("click", startVoice);
+    else mic.addEventListener("click", function () { startVoice("catchInput"); });
+
+    $("planDayBtn").addEventListener("click", openPlan);
+    $("planCancel").addEventListener("click", closePlan);
+    $("planBackdrop").addEventListener("click", closePlan);
+    $("planInput").addEventListener("input", parsePlanInput);
+    $("planApply").addEventListener("click", applyPlan);
+    var planMic = $("planMic");
+    if (!voiceSupported()) planMic.hidden = true;
+    else planMic.addEventListener("click", function () { startVoice("planInput"); });
 
     $("detailClose").addEventListener("click", closeDetail);
     $("detailBackdrop").addEventListener("click", closeDetail);
