@@ -6,427 +6,330 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <title>Daily Planner</title>
 
 <link rel="manifest" href="./manifest.webmanifest">
 
 <style>
-  /* iOS の時計アプリに寄せた配色。役割ごとの意味は変えず、値だけ入れ替えている。 */
+  /* 暗いほうを基準にする（iOSの時計アプリに合わせる）。明るいほうは差し替えで作る。 */
   :root {
-    --paper: #F2F2F7;
-    --sheet: #FFFFFF;
-    --ink: #000000;
-    --ink-2: #8E8E93;
-    --ink-3: #C7C7CC;
-    --rule: #D1D1D6;
-    --rule-2: #C6C6C8;
-    --hatch: #EDEDF2;
-    --c-1: #007AFF;
-    --c-2: #AF52DE;
-    --c-3: #FFB300;
-    --accent: #FF9500;
-    --green: #34C759;
-    --alert: #FF3B30;
-    --focus: #FF9500;
-    --e1: 0 1px 0 var(--rule);
-    --e2: 0 1px 2px rgba(0, 0, 0, .06), 0 4px 12px -8px rgba(0, 0, 0, .3);
-    --e3: 0 -1px 0 var(--rule), 0 -12px 32px -12px rgba(0, 0, 0, .4);
+    --bg: #000000;
+    --row: #1C1C1E;
+    --row-2: #2C2C2E;
+    --sep: #38383A;
+    --text: #FFFFFF;
+    --text-2: #98989F;
+    --text-3: #636366;
+    --accent: #FF9F0A;
+    --accent-dim: rgba(255, 159, 10, .18);
+    --danger: #FF453A;
+    --cat-1: #0A84FF;
+    --cat-2: #30D158;
+    --cat-3: #BF5AF2;
+    --radius: 10px;
   }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --paper: #000000;
-      --sheet: #1C1C1E;
-      --ink: #FFFFFF;
-      --ink-2: #98989F;
-      --ink-3: #48484A;
-      --rule: #38383A;
-      --rule-2: #48484A;
-      --hatch: #1C1C1E;
-      --c-1: #0A84FF;
-      --c-2: #BF5AF2;
-      --c-3: #FFD60A;
-      --accent: #FF9F0A;
-      --green: #30D158;
-      --alert: #FF453A;
-      --focus: #FF9F0A;
-      --e2: 0 1px 2px rgba(0, 0, 0, .5), 0 4px 12px -8px rgba(0, 0, 0, .9);
-      --e3: 0 -1px 0 var(--rule), 0 -12px 32px -12px rgba(0, 0, 0, .8);
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #F2F2F7;
+      --row: #FFFFFF;
+      --row-2: #F2F2F7;
+      --sep: #C6C6C8;
+      --text: #000000;
+      --text-2: #6C6C70;
+      --text-3: #8E8E93;
+      --accent: #FF9500;
+      --accent-dim: rgba(255, 149, 0, .14);
+      --danger: #FF3B30;
+      --cat-1: #007AFF;
+      --cat-2: #34C759;
+      --cat-3: #AF52DE;
     }
   }
-  :root[data-theme="dark"] {
-    --paper: #000000;
-    --sheet: #1C1C1E;
-    --ink: #FFFFFF;
-    --ink-2: #98989F;
-    --ink-3: #48484A;
-    --rule: #38383A;
-    --rule-2: #48484A;
-    --hatch: #1C1C1E;
-    --c-1: #0A84FF;
-    --c-2: #BF5AF2;
-    --c-3: #FFD60A;
-    --accent: #FF9F0A;
-    --green: #30D158;
-    --alert: #FF453A;
-    --focus: #FF9F0A;
-    --e2: 0 1px 2px rgba(0, 0, 0, .5), 0 4px 12px -8px rgba(0, 0, 0, .9);
-    --e3: 0 -1px 0 var(--rule), 0 -12px 32px -12px rgba(0, 0, 0, .8);
+  :root[data-theme="light"] {
+    --bg: #F2F2F7;
+    --row: #FFFFFF;
+    --row-2: #F2F2F7;
+    --sep: #C6C6C8;
+    --text: #000000;
+    --text-2: #6C6C70;
+    --text-3: #8E8E93;
+    --accent: #FF9500;
+    --accent-dim: rgba(255, 149, 0, .14);
+    --danger: #FF3B30;
+    --cat-1: #007AFF;
+    --cat-2: #34C759;
+    --cat-3: #AF52DE;
   }
 
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; }
   body {
     margin: 0;
-    background: var(--paper);
-    color: var(--ink);
-    /* 数字と英字は SF Pro、日本語はヒラギノ。iOS標準の見え方に寄せる。 */
-    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Hiragino Sans", sans-serif;
-    font-size: 15px;
-    line-height: 1.7;
-    font-weight: 400;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Hiragino Sans", sans-serif;
+    font-size: 17px;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -webkit-text-size-adjust: 100%;
   }
-  button, input, select, textarea { font: inherit; color: inherit; }
+  button, input, select { font: inherit; color: inherit; }
   button { cursor: pointer; background: none; border: none; padding: 0; }
   .num { font-variant-numeric: tabular-nums; }
-  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-  h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.35; text-wrap: balance; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  /* ---------- 画面の骨組み ---------- */
-  .app {
-    display: flex; flex-direction: column;
-    min-height: 100%;
-    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+  /* ---------- 骨組み ---------- */
+  .app { display: flex; flex-direction: column; min-height: 100%; }
+  .scroll {
+    flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(120px + env(safe-area-inset-bottom));
   }
-  .scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-  .pad { padding: 0 16px; }
   .view[hidden] { display: none; }
 
-  .topbar {
-    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
-    padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
-    border-bottom: 1px solid var(--rule);
-    background: var(--paper);
-    position: sticky; top: 0; z-index: 3;
+  .head {
+    padding: calc(8px + env(safe-area-inset-top)) 16px 8px;
+    display: flex; align-items: flex-end; gap: 12px;
   }
-  .topbar h1 { font-size: 22px; }
-  .totals { font-size: 13px; color: var(--ink-2); margin-left: auto; }
+  .head h1 { margin: 0; font-size: 34px; font-weight: 600; letter-spacing: -.02em; }
+  .head .sub { margin-left: auto; font-size: 15px; color: var(--text-2); padding-bottom: 6px; }
+  .backrow { padding: calc(6px + env(safe-area-inset-top)) 12px 0; }
+  .backrow button {
+    display: inline-flex; align-items: center; gap: 4px;
+    min-height: 44px; padding: 0 4px; color: var(--accent); font-size: 17px;
+  }
+
+  .progress {
+    height: 2px; background: var(--accent); width: 0;
+    transition: width .4s ease; opacity: 0;
+  }
+  .progress.on { width: 70%; opacity: 1; }
+
+  /* ---------- グループ ---------- */
+  .group-title {
+    padding: 22px 20px 6px; font-size: 13px; color: var(--text-2);
+    letter-spacing: .01em;
+  }
+  .group {
+    margin: 0 16px; background: var(--row);
+    border-radius: var(--radius); overflow: hidden;
+  }
+  .group + .group { margin-top: 12px; }
+
+  .cell {
+    position: relative; display: block; width: 100%;
+    background: var(--row); text-align: left;
+    min-height: 48px;
+  }
+  .cell + .cell .inner::before {
+    content: ""; position: absolute; left: 16px; right: 0; top: 0;
+    height: 1px; background: var(--sep);
+  }
+  .inner {
+    position: relative; display: grid; align-items: center; gap: 12px;
+    grid-template-columns: 52px minmax(0, 1fr) auto;
+    padding: 10px 14px 10px 16px; min-height: 48px;
+    background: var(--row);
+    transition: transform .22s cubic-bezier(.32, .72, 0, 1);
+  }
+  .inner.plain { grid-template-columns: minmax(0, 1fr) auto; }
+  .cell .time { font-size: 15px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+  .cell .title { font-size: 17px; overflow-wrap: anywhere; }
+  .cell .meta { font-size: 13px; color: var(--text-2); }
+  .cell .right { display: flex; align-items: center; gap: 8px; color: var(--text-3); font-size: 15px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--cat, var(--text-3)); }
+
+  .cell.event .inner { background: var(--row-2); }
+  .cell.event .title { color: var(--text-2); }
+  .cell.past .inner { opacity: .45; }
+  .cell.running .title { color: var(--accent); }
+
+  /* いまの時刻 */
+  .nowline {
+    display: grid; grid-template-columns: 52px minmax(0, 1fr);
+    gap: 12px; align-items: center; padding: 0 14px 0 16px;
+    background: var(--row);
+  }
+  .nowline .t { font-size: 15px; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .nowline .l { height: 2px; background: var(--accent); border-radius: 1px; }
+
+  /* ---------- スワイプで削除 ---------- */
+  .cell.swipe { overflow: hidden; }
+  .del-action {
+    position: absolute; top: 0; right: 0; bottom: 0; width: 88px;
+    background: var(--danger); color: #FFFFFF; font-size: 15px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .cell.open .inner { transform: translateX(-88px); }
+
+  /* ---------- 大きなボタン ---------- */
+  .bigbtn {
+    display: block; width: calc(100% - 32px); margin: 16px;
+    min-height: 50px; border-radius: var(--radius);
+    background: var(--row); color: var(--accent);
+    font-size: 17px; font-weight: 600;
+  }
+  .bigbtn.filled { background: var(--accent); color: #000000; }
+  .bigbtn[disabled] { opacity: .35; }
+
+  .chips { display: flex; gap: 8px; padding: 8px 16px 4px; }
+  .chip {
+    min-height: 34px; padding: 6px 14px; border-radius: 17px;
+    background: var(--row); color: var(--text-2); font-size: 15px;
+  }
+  .chip[aria-pressed="true"] { background: var(--accent); color: #000000; }
+
+  .empty { padding: 48px 24px; text-align: center; color: var(--text-2); font-size: 15px; }
+  .banner {
+    margin: 8px 16px 0; padding: 10px 14px; border-radius: var(--radius);
+    background: var(--row); color: var(--text-2); font-size: 13px;
+  }
+  .banner[hidden] { display: none; }
 
   /* ---------- 警告 ---------- */
-  .alerts { border-bottom: 1px solid var(--rule); }
-  .alert-row {
-    display: grid; grid-template-columns: 20px 1fr auto;
-    gap: 10px; align-items: center;
-    width: 100%; text-align: left;
-    padding: 12px 16px; min-height: 44px;
-    border-bottom: 1px solid var(--rule);
-    color: var(--alert);
-  }
-  .alert-row:last-child { border-bottom: none; }
-  .alert-row .what { font-size: 15px; font-weight: 600; color: var(--ink); }
-  .alert-row .why { font-size: 13px; color: var(--alert); }
-  .chev { color: var(--ink-3); }
+  .alert-cell .inner { grid-template-columns: 22px minmax(0, 1fr) auto; }
+  .alert-cell .title { color: var(--text); }
+  .alert-cell .meta { color: var(--danger); }
+  .alert-icon { color: var(--danger); display: block; }
 
-  /* ---------- 今日の縦1列（伝票） ---------- */
-  .rail { margin: 0; padding: 0 0 40px; }
-  .rail > .row { padding: 0 16px; }
-  .rail > *:first-child .body { border-top: none; }
-  .row {
-    display: grid;
-    grid-template-columns: 46px 13px minmax(0, 1fr);
-    align-items: stretch;
-  }
-  .row .time {
-    font-size: 13px; color: var(--ink-2); padding-top: 12px;
-    font-variant-numeric: tabular-nums;
-  }
-  .row .spine { position: relative; }
-  .row .spine::before {
-    content: ""; position: absolute; left: 6px; top: 0; bottom: 0;
-    width: 1px; background: var(--rule);
-  }
-  .row .body {
-    border-top: 1px solid var(--rule);
-    padding: 11px 0 13px 11px;
-    border-left: 3px solid var(--cat, transparent);
-    min-height: 44px;
-  }
-  .row .name { font-size: 17px; font-weight: 600; }
-  .row .meta { font-size: 13px; color: var(--ink-2); }
-  .row.event .body {
-    background: repeating-linear-gradient(
-      -45deg, var(--hatch), var(--hatch) 6px, transparent 6px, transparent 12px
-    );
-    border-left-color: var(--rule-2);
-  }
-  .row.event .name { font-weight: 400; font-size: 15px; }
-  .row.past .body { opacity: .5; }
-  .row.now .time { color: var(--alert); font-weight: 600; }
-  .row.now .body {
-    border-top: 1px solid var(--alert);
-    padding-top: 4px; padding-bottom: 4px; min-height: 0;
-  }
-  .row.now .name { font-size: 13px; font-weight: 600; color: var(--alert); }
-  .rowbtn { width: 100%; text-align: left; display: block; }
-  .start-btn {
-    margin-top: 8px; min-height: 44px; padding: 0 24px;
-    border: none; border-radius: 22px;
-    background: var(--accent); color: #FFFFFF;
-    font-size: 15px; font-weight: 600;
-  }
-  .start-btn:active { opacity: .7; }
-
-  /* ---------- タスク一覧 ---------- */
-  .chips {
-    display: flex; gap: 6px; padding: 12px 16px;
-    border-bottom: 1px solid var(--rule);
-  }
-  .chip {
-    min-height: 34px; padding: 4px 16px;
-    border: none; border-radius: 17px;
-    background: var(--sheet);
-    font-size: 14px; color: var(--ink-2);
-  }
-  .chip[aria-pressed="true"] { background: var(--accent); color: #FFFFFF; font-weight: 600; }
-  .group-label {
-    font-size: 11px; letter-spacing: .08em; color: var(--ink-3);
-    padding: 18px 16px 4px;
-  }
-  .task-row {
-    display: grid; grid-template-columns: 3px minmax(0, 1fr) auto auto;
-    gap: 10px; align-items: center;
-    width: 100%; text-align: left;
-    padding: 12px 16px 12px 0; min-height: 44px;
-    border-bottom: 1px solid var(--rule);
-  }
-  .task-row .band { align-self: stretch; background: var(--cat, var(--rule-2)); }
-  .task-row .name { font-size: 15px; }
-  .task-row .est { font-size: 13px; color: var(--ink-2); }
-  .task-row.done .name { color: var(--ink-3); text-decoration: line-through; }
-
-  /* ---------- 設定 ---------- */
-  .set-group { padding: 18px 16px 4px; font-size: 11px; letter-spacing: .08em; color: var(--ink-3); }
-  .set-row {
-    display: grid; grid-template-columns: minmax(0, 1fr) auto;
-    gap: 12px; align-items: center;
-    padding: 10px 16px; min-height: 44px;
-    border-bottom: 1px solid var(--rule);
-  }
-  .set-row input, .set-row select {
-    background: var(--sheet); border: none;
-    border-radius: 10px; padding: 8px 12px; min-height: 40px;
-    max-width: 190px; text-align: right;
-  }
-  .set-row input[type="text"] { text-align: left; }
-  .wide { display: block; padding: 12px 16px; border-bottom: 1px solid var(--rule); }
-  .wide input, .wide textarea {
-    width: 100%; max-width: none; text-align: left; margin-top: 6px;
-    background: var(--sheet); border: 1px solid var(--rule);
-    border-radius: 2px; padding: 10px; min-height: 44px;
-  }
-  .action-btn {
-    display: block; width: calc(100% - 32px); margin: 16px;
-    min-height: 50px; border: none; border-radius: 12px;
-    background: var(--sheet); color: var(--accent);
-    font-size: 16px; font-weight: 600;
-  }
-  .action-btn.primary { background: var(--accent); color: #FFFFFF; }
-  .action-btn:active { opacity: .7; }
-  .action-btn[disabled] { opacity: .4; cursor: default; }
-  .note { padding: 4px 16px 16px; font-size: 13px; color: var(--ink-2); }
-
-  /* ---------- 下タブ ---------- */
+  /* ---------- タブ ---------- */
   .tabbar {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 4;
     display: grid; grid-template-columns: repeat(3, 1fr);
-    background: var(--paper);
-    border-top: 1px solid var(--rule);
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-top: 1px solid var(--sep);
     padding-bottom: env(safe-area-inset-bottom);
   }
-  .tabbar button {
-    min-height: 56px; font-size: 13px; color: var(--ink-3);
-  }
-  .tabbar button[aria-current="page"] { color: var(--accent); font-weight: 600; }
+  .tabbar button { min-height: 54px; font-size: 12px; color: var(--text-3); }
+  .tabbar button[aria-current="page"] { color: var(--accent); }
   .fab {
     position: fixed; right: 16px; z-index: 5;
-    bottom: calc(76px + env(safe-area-inset-bottom));
-    width: 60px; height: 60px; padding: 0;
-    display: flex; align-items: center; justify-content: center;
-    background: var(--accent); color: #FFFFFF;
-    border-radius: 30px; font-size: 30px; font-weight: 400; line-height: 1;
-    box-shadow: var(--e2);
+    bottom: calc(70px + env(safe-area-inset-bottom));
+    width: 56px; height: 56px; border-radius: 28px;
+    background: var(--accent); color: #000000;
+    font-size: 30px; font-weight: 400; line-height: 1;
+    box-shadow: 0 6px 20px -6px rgba(0, 0, 0, .7);
   }
-  .fab:active { opacity: .8; }
 
   /* ---------- シート ---------- */
-  .backdrop {
-    position: fixed; inset: 0; z-index: 10;
-    background: rgba(0, 0, 0, .35);
-  }
+  .backdrop { position: fixed; inset: 0; z-index: 10; background: rgba(0, 0, 0, .5); }
   .backdrop[hidden] { display: none; }
   .sheet {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 11;
     max-height: 92%; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    background: var(--paper);
-    box-shadow: var(--e3);
-    padding-bottom: calc(24px + env(safe-area-inset-bottom));
-    transform: translateY(0);
-    animation: rise 200ms cubic-bezier(.32, .72, 0, 1);
+    background: var(--bg);
+    border-radius: 14px 14px 0 0;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+    animation: rise 260ms cubic-bezier(.32, .72, 0, 1);
   }
   .sheet[hidden] { display: none; }
   @keyframes rise { from { transform: translateY(100%); } to { transform: translateY(0); } }
   @media (prefers-reduced-motion: reduce) {
-    .sheet { animation: fade 120ms linear; }
-    @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+    .sheet { animation: none; }
+    .inner { transition: none; }
+  }
+  .grabber {
+    width: 36px; height: 5px; border-radius: 3px; background: var(--sep);
+    margin: 8px auto 4px;
   }
   .sheet-head {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 16px; border-bottom: 1px solid var(--rule);
+    padding: 6px 16px 10px;
   }
-  .sheet-head button { min-height: 44px; padding: 0 4px; color: var(--ink-2); font-size: 15px; }
-  .sheet-title { font-size: 17px; font-weight: 600; }
-  .field-row {
-    display: grid; grid-template-columns: 64px minmax(0, 1fr);
-    gap: 12px; align-items: center;
-    padding: 8px 16px; min-height: 44px;
-  }
-  .field-row label { font-size: 13px; color: var(--ink-2); }
-  .field-row input, .field-row select {
-    background: var(--sheet); border: none;
-    border-radius: 10px; padding: 10px 12px; min-height: 44px; width: 100%;
-  }
-  .catch {
-    padding: 12px 16px 0;
-  }
+  .sheet-head .t { font-size: 17px; font-weight: 600; }
+  .sheet-head button { min-height: 44px; color: var(--accent); font-size: 17px; }
+
+  .catch { padding: 4px 16px 0; }
   .catch input {
-    width: 100%; background: var(--sheet); border: none;
-    border-radius: 12px; padding: 12px 14px; min-height: 50px; font-size: 17px;
+    width: 100%; background: var(--row); border: none; color: var(--text);
+    border-radius: var(--radius); padding: 14px; min-height: 52px; font-size: 17px;
   }
-  .parsed { padding: 6px 16px 0; font-size: 13px; color: var(--ink-2); min-height: 22px; }
+  .parsed { padding: 8px 20px 0; font-size: 13px; color: var(--text-2); min-height: 20px; }
   .mic {
     display: flex; align-items: center; justify-content: center; gap: 8px;
-    margin: 12px 16px 4px; width: calc(100% - 32px);
-    min-height: 50px; border: 2px solid transparent; border-radius: 25px;
-    background: var(--sheet); color: var(--accent);
-    font-size: 16px; font-weight: 600;
+    margin: 12px 16px 0; width: calc(100% - 32px);
+    min-height: 50px; border-radius: var(--radius);
+    background: var(--row); color: var(--accent); font-size: 17px;
   }
-  .mic[data-listening="true"] {
-    border-color: var(--alert); color: var(--alert);
-    animation: pulse 1.2s ease-in-out infinite;
-  }
-  @keyframes pulse { 0%, 100% { border-color: transparent; } 50% { border-color: var(--alert); } }
-  @media (prefers-reduced-motion: reduce) { .mic[data-listening="true"] { animation: none; } }
-  .msg { padding: 0 16px; font-size: 13px; color: var(--alert); min-height: 20px; }
+  .mic[data-listening="true"] { background: var(--accent-dim); color: var(--danger); }
+  .msg { padding: 8px 20px 0; font-size: 13px; color: var(--danger); min-height: 18px; }
 
-  .detail-head { padding: 12px 16px 0; }
-  .detail-head .t { font-size: 20px; font-weight: 600; }
-  .detail-head .sub { font-size: 13px; color: var(--ink-2); }
-  .detail-body { padding: 12px 16px; }
-  .detail-body dt { font-size: 11px; letter-spacing: .08em; color: var(--ink-3); margin-top: 12px; }
-  .detail-body dd { margin: 2px 0 0; font-size: 15px; }
-  .detail-actions {
-    display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
-    padding: 12px 16px;
+  .field {
+    display: grid; grid-template-columns: 72px minmax(0, 1fr);
+    gap: 12px; align-items: center; padding: 0 16px;
+    min-height: 52px; background: var(--row);
   }
-  .detail-actions button {
-    min-height: 50px; border: none; border-radius: 12px;
-    background: var(--sheet); color: var(--accent);
-    font-size: 16px; font-weight: 600;
+  .fields { margin: 12px 16px 0; border-radius: var(--radius); overflow: hidden; }
+  .fields .field + .field { border-top: 1px solid var(--sep); }
+  .field label { font-size: 15px; color: var(--text-2); }
+  .field input, .field select {
+    background: none; border: none; padding: 12px 0; min-height: 48px;
+    width: 100%; text-align: right; font-size: 17px;
   }
-  .detail-actions button.primary { background: var(--accent); color: #FFFFFF; }
-  .detail-actions button.danger { color: var(--alert); }
-  .detail-actions button:active { opacity: .7; }
+  .field select { text-align-last: right; }
 
-  /* ---------- 横スワイプで操作を出す（時計アプリのアラーム一覧と同じ挙動） ---------- */
-  .swipe { position: relative; overflow: hidden; background: var(--alert); }
-  .swipe-actions {
-    position: absolute; inset: 0 0 0 auto;
-    display: flex; align-items: stretch;
+  .detail-facts { margin: 12px 16px 0; border-radius: var(--radius); overflow: hidden; background: var(--row); }
+  .fact { padding: 10px 16px; }
+  .fact + .fact { border-top: 1px solid var(--sep); }
+  .fact dt { font-size: 13px; color: var(--text-2); }
+  .fact dd { margin: 2px 0 0; font-size: 17px; overflow-wrap: anywhere; }
+  .actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 16px; }
+  .actions button {
+    min-height: 50px; border-radius: var(--radius);
+    background: var(--row); color: var(--accent); font-size: 17px; font-weight: 600;
   }
-  .swipe-actions button {
-    width: 84px; min-height: 44px;
-    color: #FFFFFF; font-size: 15px; font-weight: 600;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .swipe-actions .act-done { background: var(--green); }
-  .swipe-actions .act-del { background: var(--alert); }
-  .swipe-content {
-    position: relative;
-    background: var(--paper);
-    transform: translateX(0);
-    touch-action: pan-y;
-  }
-  /* 今日の列だけ、時刻の左に余白が要る。タスク一覧は色帯を端に置くので padding を持たない。 */
-  .rail .swipe-content { padding: 0 16px; }
-  .swipe-content.settling { transition: transform 220ms cubic-bezier(.32, .72, 0, 1); }
-  .swipe.removing {
-    max-height: 0; opacity: 0;
-    transition: max-height 200ms ease, opacity 160ms ease;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .swipe-content.settling { transition: none; }
-    .swipe.removing { transition: none; }
-  }
-  .swipe-hint {
-    padding: 10px 16px 2px; font-size: 12px; color: var(--ink-3);
-  }
-
-  .empty { padding: 40px 16px; color: var(--ink-2); text-align: center; }
-  .bar {
-    padding: 8px 16px; font-size: 13px;
-    background: var(--hatch); border-bottom: 1px solid var(--rule);
-  }
-  .bar[hidden] { display: none; }
-  .warn-icon { display: block; }
+  .actions button.filled { background: var(--accent); color: #000000; }
+  .actions button.danger { color: var(--danger); }
 </style>
 
 <div class="app">
-  <div class="topbar">
-    <h1 id="screenTitle">今日</h1>
-    <span class="totals num" id="totals"></span>
-  </div>
-
-  <div class="bar" id="staleBar" hidden>更新できていません。表示は最後に取得した内容です。</div>
+  <div class="progress" id="progress"></div>
 
   <div class="scroll" id="scroll">
-    <!-- 今日 -->
-    <section class="view" id="viewToday">
-      <div class="alerts" id="alerts"></div>
-      <div class="rail" id="rail"></div>
+    <!-- 今日 / ある1日 -->
+    <section class="view" id="viewDay">
+      <div class="backrow" id="backRow" hidden>
+        <button type="button" id="backBtn">‹ これから</button>
+      </div>
+      <div class="head">
+        <h1 id="dayTitle">今日</h1>
+        <span class="sub num" id="dayTotals"></span>
+      </div>
+      <div class="banner" id="staleBar" hidden>更新できていません</div>
+      <div id="alertsBox"></div>
+      <div id="dayBody"></div>
     </section>
 
-    <!-- タスク -->
-    <section class="view" id="viewTasks" hidden>
-      <div class="chips" id="chips"></div>
-      <div id="taskList"></div>
+    <!-- これから -->
+    <section class="view" id="viewNext" hidden>
+      <div class="head"><h1>これから</h1></div>
+      <div id="nextBody"></div>
     </section>
 
     <!-- 設定 -->
     <section class="view" id="viewSettings" hidden>
+      <div class="head"><h1>設定</h1></div>
       <div id="settingsBody"></div>
     </section>
   </div>
 </div>
 
-<button class="fab" id="fab" type="button" aria-label="タスクを追加">
-  <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-    <path d="M12 5v14M5 12h14"></path>
-  </svg>
-</button>
+<button class="fab" id="fab" type="button" aria-label="タスクを追加">+</button>
 
 <nav class="tabbar">
-  <button type="button" data-tab="today" aria-current="page">今日</button>
-  <button type="button" data-tab="tasks">タスク</button>
+  <button type="button" data-tab="day" aria-current="page">今日</button>
+  <button type="button" data-tab="next">これから</button>
   <button type="button" data-tab="settings">設定</button>
 </nav>
 
-<!-- 追加シート -->
+<!-- 追加 -->
 <div class="backdrop" id="addBackdrop" hidden></div>
 <div class="sheet" id="addSheet" hidden role="dialog" aria-label="タスクを追加">
+  <div class="grabber"></div>
   <div class="sheet-head">
-    <span class="sheet-title">追加</span>
+    <span class="t">追加</span>
     <button type="button" id="addCancel">キャンセル</button>
   </div>
   <div class="catch">
@@ -434,58 +337,56 @@
   </div>
   <div class="parsed" id="parsedHint"></div>
   <button class="mic" type="button" id="micBtn" data-listening="false">
-    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5">
+    <svg width="17" height="17" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5">
       <rect x="5.75" y="1.75" width="4.5" height="8" rx="2.25"></rect>
       <path d="M3.25 7.5a4.75 4.75 0 0 0 9.5 0M8 12.25v2"></path>
     </svg>
     <span id="micLabel">話して追加</span>
   </button>
   <div class="msg" id="addMsg"></div>
-  <div class="field-row">
-    <label for="fEstimate">見積</label>
-    <input type="number" id="fEstimate" min="5" step="5" inputmode="numeric" placeholder="分（必須）">
+  <div class="fields">
+    <div class="field">
+      <label for="fEstimate">見積</label>
+      <input type="number" id="fEstimate" min="5" step="5" inputmode="numeric" placeholder="分（必須）">
+    </div>
+    <div class="field">
+      <label for="fDue">期限</label>
+      <input type="date" id="fDue">
+    </div>
+    <div class="field">
+      <label for="fPriority">優先</label>
+      <select id="fPriority">
+        <option value="1">最優先</option>
+        <option value="2">急ぎ</option>
+        <option value="3" selected>通常</option>
+        <option value="4">いつでも</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="fCategory">分類</label>
+      <select id="fCategory"></select>
+    </div>
   </div>
-  <div class="field-row">
-    <label for="fDue">期限</label>
-    <input type="date" id="fDue">
-  </div>
-  <div class="field-row">
-    <label for="fPriority">優先</label>
-    <select id="fPriority">
-      <option value="1">最優先</option>
-      <option value="2">急ぎ</option>
-      <option value="3" selected>通常</option>
-      <option value="4">いつでも</option>
-    </select>
-  </div>
-  <div class="field-row">
-    <label for="fCategory">分類</label>
-    <select id="fCategory"></select>
-  </div>
-  <button class="action-btn primary" id="addSave" type="button" disabled>保存</button>
+  <button class="bigbtn filled" id="addSave" type="button" disabled>保存</button>
 </div>
 
-<!-- タスク詳細シート -->
+<!-- 詳細 -->
 <div class="backdrop" id="detailBackdrop" hidden></div>
 <div class="sheet" id="detailSheet" hidden role="dialog" aria-label="タスクの詳細">
+  <div class="grabber"></div>
   <div class="sheet-head">
-    <span class="sheet-title">タスク</span>
+    <span class="t" id="detailTitle"></span>
     <button type="button" id="detailClose">閉じる</button>
   </div>
-  <div class="detail-head">
-    <div class="t" id="detailTitle"></div>
-    <div class="sub" id="detailSub"></div>
-  </div>
-  <div class="detail-body">
-    <div id="detailWarn"></div>
-    <dl id="detailFacts"></dl>
-  </div>
-  <div class="detail-actions">
-    <button type="button" class="primary" id="actStart">開始</button>
+  <div class="parsed" id="detailSub"></div>
+  <div class="msg" id="detailWarn"></div>
+  <div class="detail-facts" id="detailFacts"></div>
+  <div class="actions">
+    <button type="button" class="filled" id="actStart">開始</button>
     <button type="button" id="actDone">完了</button>
-    <button type="button" id="actDefer">明日に延期</button>
-    <button type="button" class="danger" id="actDelete">削除</button>
+    <button type="button" id="actDefer">延期</button>
   </div>
+  <button class="bigbtn" id="actDelete" type="button" style="color: var(--danger)">削除</button>
   <div class="msg" id="detailMsg"></div>
 </div>
 
@@ -697,19 +598,21 @@ if (typeof module !== "undefined" && module.exports) {
   "use strict";
 
   var CONN_KEY = "dp.connection";
-  var CAT_VARS = ["--c-1", "--c-2", "--c-3"];
+  var CACHE_KEY = "dp.cache.today";
+  var CAT_VARS = ["--cat-1", "--cat-2", "--cat-3"];
   var PRIORITY_LABEL = { 1: "最優先", 2: "急ぎ", 3: "通常", 4: "いつでも" };
 
   var state = {
-    view: "today",
-    today: null,
-    tasks: null,
+    view: "day",
+    day: null,          // 表示中の1日（今日 or 選んだ日）
+    dayKey: null,
+    upcoming: null,
     settings: null,
-    categoryFilter: null,
     detailTaskId: null,
     touched: {},
     openedAt: Date.now(),
-    startLogged: false
+    startLogged: false,
+    inflight: 0
   };
 
   var $ = function (id) { return document.getElementById(id); };
@@ -744,88 +647,149 @@ if (typeof module !== "undefined" && module.exports) {
   function hoursMinutes(min) {
     var h = Math.floor(min / 60);
     var m = min % 60;
-    return h > 0 ? h + ":" + String(m).padStart(2, "0") : m + "分";
+    return h > 0 ? h + "時間" + (m ? m + "分" : "") : m + "分";
+  }
+
+  function parseKey(key) {
+    var p = String(key).split("-");
+    return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  }
+
+  function keyOf(d) {
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+
+  function todayKey() { return keyOf(new Date()); }
+
+  function addDaysKey(key, n) {
+    var d = parseKey(key);
+    d.setDate(d.getDate() + n);
+    return keyOf(d);
   }
 
   function dateLabel(key) {
-    var parts = String(key).split("-");
-    var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    var d = parseKey(key);
     var wd = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
     return d.getMonth() + 1 + "月" + d.getDate() + "日(" + wd + ")";
-  }
-
-  function todayKey() {
-    var d = new Date();
-    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
   }
 
   function categoryVar(name) {
     var list = (state.settings && state.settings.categories) || [];
     var i = list.indexOf(name);
-    return i >= 0 ? "var(" + CAT_VARS[i % CAT_VARS.length] + ")" : "var(--rule-2)";
+    return i >= 0 ? "var(" + CAT_VARS[i % CAT_VARS.length] + ")" : "var(--text-3)";
   }
 
-  function warnIcon() {
-    return '<svg class="warn-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">' +
+  function alertIcon() {
+    return '<svg class="alert-icon" width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">' +
       '<path d="M10 3.2 18 16.8H2z" stroke-linejoin="round"></path>' +
       '<path d="M10 8v4M10 14.4v.2" stroke-linecap="round"></path></svg>';
   }
 
-  /* ---------- 通信 ---------- */
+  /* ---------- 通信（細い進捗線。画面は差し替えない） ---------- */
 
   function call(action, payload) {
-    return window.DP_CALL(action, payload);
+    state.inflight += 1;
+    $("progress").classList.add("on");
+    return window.DP_CALL(action, payload).then(finish, function (err) {
+      finish();
+      throw err;
+    });
   }
 
-  function showStale(on) {
-    $("staleBar").hidden = !on;
+  function finish(value) {
+    state.inflight = Math.max(0, state.inflight - 1);
+    if (!state.inflight) $("progress").classList.remove("on");
+    return value;
   }
 
-  /* ---------- 今日 ---------- */
+  /* ---------- 1日の表示（今日 / 選んだ日） ---------- */
 
-  function loadToday() {
+  function readCache() {
+    try { return JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); } catch (e) { return null; }
+  }
+
+  function writeCache(payload) {
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(payload)); } catch (e) {}
+  }
+
+  function loadToday(useCache) {
+    if (useCache) {
+      var cached = readCache();
+      if (cached && cached.date === todayKey()) {
+        state.day = cached;
+        state.dayKey = cached.date;
+        state.settings = cached.settings || state.settings;
+        renderDay();
+      }
+    }
     return call("getToday", { now: new Date().toISOString() })
       .then(function (data) {
-        state.today = data;
+        state.day = data;
+        state.dayKey = data.date;
         state.settings = data.settings;
-        showStale(false);
-        renderToday();
+        writeCache(data);
+        $("staleBar").hidden = true;
+        renderDay();
       })
       .catch(function (err) {
-        if (!state.today) renderError($("rail"), err.message);
-        else showStale(true);
+        if (state.day) $("staleBar").hidden = false;
+        else renderEmpty($("dayBody"), err.message);
       });
   }
 
-  function renderToday() {
-    var data = state.today;
-    if (!data) return;
-    $("totals").textContent = "作業 " + hoursMinutes(data.plannedMin) + " / 空き " + hoursMinutes(data.freeMin);
-    $("screenTitle").textContent = dateLabel(data.date);
+  function loadDay(key) {
+    state.dayKey = key;
+    return call("getDay", { date: key, now: new Date().toISOString() })
+      .then(function (data) {
+        state.day = data;
+        renderDay();
+      })
+      .catch(function (err) { renderEmpty($("dayBody"), err.message); });
+  }
 
-    renderAlerts(data.warnings || []);
-    renderRail(data.items || []);
-    scrollToNow();
+  function renderDay() {
+    var data = state.day;
+    if (!data) return;
+    var isToday = data.date === todayKey();
+
+    $("backRow").hidden = isToday;
+    $("dayTitle").textContent = isToday ? "今日" : dateLabel(data.date);
+    $("dayTotals").textContent = data.plannedMin
+      ? hoursMinutes(data.plannedMin) + " / 空き " + hoursMinutes(data.freeMin)
+      : "空き " + hoursMinutes(data.freeMin);
+
+    renderAlerts(isToday ? (data.warnings || []) : []);
+    renderColumn(data, isToday);
+    if (isToday) scrollToNow();
   }
 
   function renderAlerts(warnings) {
-    var box = $("alerts");
+    var box = $("alertsBox");
     box.textContent = "";
     if (!warnings.length) return;
 
+    var title = document.createElement("div");
+    title.className = "group-title";
+    title.textContent = "間に合いません";
+    box.appendChild(title);
+
+    var group = document.createElement("div");
+    group.className = "group";
     warnings.forEach(function (w) {
+      var cell = document.createElement("div");
+      cell.className = "cell alert-cell";
       var btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "alert-row";
-      btn.innerHTML =
-        warnIcon() +
-        '<span><span class="what"></span><br><span class="why"></span></span>' +
-        '<span class="chev">›</span>';
-      btn.querySelector(".what").textContent = w.title;
-      btn.querySelector(".why").textContent = reasonText(w);
+      btn.className = "inner";
+      btn.style.width = "100%";
+      btn.innerHTML = alertIcon() + '<span><span class="title"></span><br><span class="meta"></span></span><span class="right">›</span>';
+      btn.querySelector(".title").textContent = w.title;
+      btn.querySelector(".meta").textContent = reasonText(w);
       btn.addEventListener("click", function () { openDetail(w.taskId); });
-      box.appendChild(btn);
+      cell.appendChild(btn);
+      group.appendChild(cell);
     });
+    box.appendChild(group);
   }
 
   function reasonText(w) {
@@ -835,101 +799,157 @@ if (typeof module !== "undefined" && module.exports) {
     return "着手が遅れています";
   }
 
-  function renderRail(items) {
-    var rail = $("rail");
-    rail.textContent = "";
+  function renderColumn(data, isToday) {
+    var box = $("dayBody");
+    box.textContent = "";
+    var items = data.items || [];
 
     if (!items.length) {
-      rail.innerHTML = '<div class="empty">今日ぶんの予定はありません。<br>右下の「追加」から入れてください。</div>';
+      renderEmpty(box, isToday ? "今日ぶんの予定はありません" : "この日に置かれたものはありません");
       return;
     }
 
+    var title = document.createElement("div");
+    title.className = "group-title";
+    title.textContent = isToday ? "時間割" : dateLabel(data.date) + " の時間割";
+    box.appendChild(title);
+
+    var group = document.createElement("div");
+    group.className = "group";
     var now = new Date();
     var marked = false;
-    var startOffered = false;
 
     items.forEach(function (item) {
-      var start = new Date(item.start);
-      if (!marked && start > now) {
-        rail.appendChild(nowRow(now));
+      if (isToday && !marked && new Date(item.start) > now) {
+        group.appendChild(nowLine(now));
         marked = true;
       }
-      // 「開始」は現在時刻に続く最初の1本にだけ出す。並べると選ばせることになる。
-      var offerStart = false;
-      if (!startOffered && item.type === "block" && new Date(item.end) > now) {
-        offerStart = true;
-        startOffered = true;
-      }
-      var row = itemRow(item, now, offerStart);
-      // カレンダー由来の予定はこのアプリのものではないので、スワイプ操作を付けない。
-      rail.appendChild(item.type === "block" ? swipeable(row, taskActions(item.taskId)) : row);
+      group.appendChild(itemCell(item, now, isToday));
     });
-    if (!marked) rail.appendChild(nowRow(now));
+    if (isToday && !marked) group.appendChild(nowLine(now));
+
+    box.appendChild(group);
   }
 
-  function nowRow(now) {
-    var li = document.createElement("div");
-    li.className = "row now";
-    li.innerHTML =
-      '<span class="time"></span><span class="spine"></span><div class="body"><div class="name">いま</div></div>';
-    li.querySelector(".time").textContent = hm(now);
-    li.id = "nowMarker";
-    return li;
+  function nowLine(now) {
+    var div = document.createElement("div");
+    div.className = "nowline";
+    div.id = "nowMarker";
+    div.innerHTML = '<span class="t"></span><span class="l"></span>';
+    div.querySelector(".t").textContent = hm(now);
+    return div;
   }
 
-  function itemRow(item, now, offerStart) {
-    var li = document.createElement("div");
-    var past = new Date(item.end) <= now;
-    li.className = "row " + item.type + (past ? " past" : "");
+  function itemCell(item, now, isToday) {
+    var cell = document.createElement("div");
+    var past = isToday && new Date(item.end) <= now;
+    cell.className = "cell " + item.type + (past ? " past" : "");
+
+    var inner = document.createElement(item.type === "block" ? "button" : "div");
+    inner.className = "inner";
+    if (item.type === "block") inner.type = "button";
 
     var time = document.createElement("span");
     time.className = "time";
     time.textContent = hm(item.start);
 
-    var spine = document.createElement("span");
-    spine.className = "spine";
-
-    var body = document.createElement("div");
-    body.className = "body";
-    if (item.type === "block") body.style.setProperty("--cat", categoryVar(item.category));
-
-    var name = document.createElement("div");
-    name.className = "name";
-    name.textContent = item.title;
-
-    var meta = document.createElement("div");
+    var mid = document.createElement("span");
+    var title = document.createElement("span");
+    title.className = "title";
+    title.textContent = item.title;
+    var meta = document.createElement("span");
     meta.className = "meta";
     meta.textContent = item.type === "event"
-      ? "予定 · " + hm(item.start) + "–" + hm(item.end)
-      : item.category + " · " + item.minutes + "分";
+      ? "予定 " + hm(item.start) + "–" + hm(item.end)
+      : item.category + " " + item.minutes + "分";
+    mid.appendChild(title);
+    mid.appendChild(document.createElement("br"));
+    mid.appendChild(meta);
 
-    body.appendChild(name);
-    body.appendChild(meta);
+    var right = document.createElement("span");
+    right.className = "right";
 
     if (item.type === "block") {
-      var open = document.createElement("button");
-      open.type = "button";
-      open.className = "rowbtn";
-      open.appendChild(name);
-      open.appendChild(meta);
-      open.addEventListener("click", function () { openDetail(item.taskId); });
-      body.textContent = "";
-      body.appendChild(open);
-
-      if (offerStart) {
-        var start = document.createElement("button");
-        start.type = "button";
-        start.className = "start-btn";
-        start.textContent = "開始";
-        start.addEventListener("click", function () { startTask(item.taskId); });
-        body.appendChild(start);
-      }
+      var dot = document.createElement("span");
+      dot.className = "dot";
+      dot.style.setProperty("--cat", categoryVar(item.category));
+      right.appendChild(dot);
+      inner.addEventListener("click", function () {
+        if (cell.classList.contains("open")) { closeSwipes(); return; }
+        openDetail(item.taskId);
+      });
+      cell.classList.add("swipe");
+      attachSwipe(cell, inner, item.taskId);
     }
 
-    li.appendChild(time);
-    li.appendChild(spine);
-    li.appendChild(body);
-    return li;
+    inner.appendChild(time);
+    inner.appendChild(mid);
+    inner.appendChild(right);
+    cell.appendChild(inner);
+    return cell;
+  }
+
+  /* ---------- 横スワイプで削除 ---------- */
+
+  function closeSwipes(except) {
+    var open = document.querySelectorAll(".cell.open");
+    for (var i = 0; i < open.length; i++) if (open[i] !== except) open[i].classList.remove("open");
+  }
+
+  function attachSwipe(cell, inner, taskId) {
+    var del = document.createElement("button");
+    del.type = "button";
+    del.className = "del-action";
+    del.textContent = "削除";
+    del.addEventListener("click", function (e) {
+      e.stopPropagation();
+      deleteTask(taskId);
+    });
+    cell.insertBefore(del, cell.firstChild);
+
+    var startX = 0;
+    var startY = 0;
+    var dragging = false;
+    var decided = false;
+
+    cell.addEventListener("touchstart", function (e) {
+      var t = e.touches[0];
+      startX = t.clientX;
+      startY = t.clientY;
+      dragging = true;
+      decided = false;
+    }, { passive: true });
+
+    cell.addEventListener("touchmove", function (e) {
+      if (!dragging) return;
+      var t = e.touches[0];
+      var dx = t.clientX - startX;
+      var dy = t.clientY - startY;
+
+      if (!decided) {
+        // 縦に動いているならスクロールに譲る
+        if (Math.abs(dy) > Math.abs(dx)) { dragging = false; return; }
+        if (Math.abs(dx) < 8) return;
+        decided = true;
+        closeSwipes(cell);
+      }
+      var base = cell.classList.contains("open") ? -88 : 0;
+      var offset = Math.max(-110, Math.min(0, base + dx));
+      inner.style.transition = "none";
+      inner.style.transform = "translateX(" + offset + "px)";
+    }, { passive: true });
+
+    cell.addEventListener("touchend", function (e) {
+      if (!dragging) return;
+      dragging = false;
+      inner.style.transition = "";
+      inner.style.transform = "";
+      if (!decided) return;
+      var dx = (e.changedTouches[0].clientX - startX);
+      var wasOpen = cell.classList.contains("open");
+      if (!wasOpen && dx < -44) cell.classList.add("open");
+      else if (wasOpen && dx > 44) cell.classList.remove("open");
+    });
   }
 
   // 作業開始前は最上部、作業中は現在時刻を上へ、終了後は最下部。
@@ -944,9 +964,8 @@ if (typeof module !== "undefined" && module.exports) {
 
     if (minutes < startMin) { scroll.scrollTop = 0; return; }
     if (minutes >= endMin) { scroll.scrollTop = scroll.scrollHeight; return; }
-
     var marker = $("nowMarker");
-    if (marker) scroll.scrollTop = Math.max(0, marker.offsetTop - 56);
+    if (marker) scroll.scrollTop = Math.max(0, marker.offsetTop - 80);
   }
 
   function toMinutes(text, fallback) {
@@ -954,240 +973,7 @@ if (typeof module !== "undefined" && module.exports) {
     return m ? Number(m[1]) * 60 + Number(m[2]) : fallback;
   }
 
-  /* ---------- タスク一覧 ---------- */
-
-  function loadTasks() {
-    return call("listTasks", { now: new Date().toISOString() })
-      .then(function (data) {
-        state.tasks = data.tasks;
-        if (state.settings) state.settings.categories = data.categories;
-        renderTasks();
-      })
-      .catch(function (err) { renderError($("taskList"), err.message); });
-  }
-
-  function renderTasks() {
-    renderChips();
-    var box = $("taskList");
-    box.textContent = "";
-
-    var rows = (state.tasks || []).filter(function (t) {
-      if (t.status === "完了") return false;
-      if (state.categoryFilter && t.category !== state.categoryFilter) return false;
-      return true;
-    });
-
-    if (!rows.length) {
-      box.innerHTML = '<div class="empty">表示するタスクがありません。</div>';
-      return;
-    }
-
-    rows.sort(function (a, b) {
-      if (!a.due !== !b.due) return a.due ? -1 : 1;
-      if (a.due && b.due && a.due !== b.due) return a.due < b.due ? -1 : 1;
-      return (a.priority || 3) - (b.priority || 3);
-    });
-
-    var today = todayKey();
-    var groups = [
-      ["きょうまで", function (t) { return t.due && t.due <= today; }],
-      ["あす", function (t) { return t.due === addDaysKey(today, 1); }],
-      ["今週", function (t) { return t.due && t.due <= addDaysKey(today, 7); }],
-      ["それ以降", function (t) { return !!t.due; }],
-      ["期限なし", function (t) { return !t.due; }]
-    ];
-
-    var used = {};
-    groups.forEach(function (g) {
-      var items = rows.filter(function (t) { return !used[t.id] && g[1](t); });
-      if (!items.length) return;
-      items.forEach(function (t) { used[t.id] = true; });
-
-      var label = document.createElement("div");
-      label.className = "group-label";
-      label.textContent = g[0];
-      box.appendChild(label);
-      items.forEach(function (t) {
-        box.appendChild(swipeable(taskRow(t), taskActions(t.id)));
-      });
-    });
-
-    var hint = document.createElement("div");
-    hint.className = "swipe-hint";
-    hint.textContent = "左にスワイプすると 完了 / 削除 が出ます";
-    box.appendChild(hint);
-  }
-
-  function addDaysKey(key, n) {
-    var parts = key.split("-");
-    var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]) + n);
-    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
-  }
-
-  function taskRow(t) {
-    var btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "task-row";
-    btn.innerHTML =
-      '<span class="band"></span><span class="name"></span><span class="est num"></span><span class="chev"></span>';
-    btn.style.setProperty("--cat", categoryVar(t.category));
-    btn.querySelector(".name").textContent = t.title;
-    btn.querySelector(".est").textContent = (t.remainMin != null ? t.remainMin : t.estimateMin) + "分";
-    if (t.planState === "late" || t.planState === "unplaced") {
-      btn.querySelector(".chev").innerHTML = warnIcon();
-      btn.querySelector(".chev").style.color = "var(--alert)";
-    } else {
-      btn.querySelector(".chev").textContent = "›";
-    }
-    btn.addEventListener("click", function () { openDetail(t.id); });
-    return btn;
-  }
-
-  function renderChips() {
-    var box = $("chips");
-    box.textContent = "";
-    var cats = (state.settings && state.settings.categories) || [];
-
-    box.appendChild(chip("すべて", null));
-    cats.forEach(function (c) { box.appendChild(chip(c, c)); });
-  }
-
-  function chip(label, value) {
-    var b = document.createElement("button");
-    b.type = "button";
-    b.className = "chip";
-    b.textContent = label;
-    b.setAttribute("aria-pressed", state.categoryFilter === value ? "true" : "false");
-    b.addEventListener("click", function () {
-      state.categoryFilter = state.categoryFilter === value ? null : value;
-      renderTasks();
-    });
-    return b;
-  }
-
-  /* ---------- スワイプ ---------- */
-
-  var openSwipe = null;
-
-  function closeOpenSwipe() {
-    if (!openSwipe) return;
-    slide(openSwipe, 0);
-    openSwipe = null;
-  }
-
-  function slide(content, x) {
-    content.classList.add("settling");
-    content.style.transform = "translateX(" + x + "px)";
-  }
-
-  /**
-   * 行を左スワイプすると、右から操作ボタンが出る。
-   * actions は [{label, className, run}] の配列。
-   */
-  function swipeable(content, actions) {
-    var wrap = document.createElement("div");
-    wrap.className = "swipe";
-
-    var tray = document.createElement("div");
-    tray.className = "swipe-actions";
-    actions.forEach(function (a) {
-      var b = document.createElement("button");
-      b.type = "button";
-      b.className = a.className;
-      b.textContent = a.label;
-      b.addEventListener("click", function (ev) {
-        ev.stopPropagation();
-        openSwipe = null;
-        a.run(wrap);
-      });
-      tray.appendChild(b);
-    });
-
-    var body = document.createElement("div");
-    body.className = "swipe-content";
-    body.appendChild(content);
-
-    var width = actions.length * 84;
-    var startX = 0;
-    var startY = 0;
-    var offset = 0;
-    var dragging = false;
-    var decided = false;
-
-    body.addEventListener("touchstart", function (e) {
-      if (openSwipe && openSwipe !== body) closeOpenSwipe();
-      startX = e.touches[0].clientX;
-      startY = e.touches[0].clientY;
-      offset = openSwipe === body ? -width : 0;
-      dragging = true;
-      decided = false;
-      body.classList.remove("settling");
-    }, { passive: true });
-
-    body.addEventListener("touchmove", function (e) {
-      if (!dragging) return;
-      var dx = e.touches[0].clientX - startX;
-      var dy = e.touches[0].clientY - startY;
-      if (!decided) {
-        // 縦に動かしているならスクロールに譲る
-        if (Math.abs(dy) > Math.abs(dx)) { dragging = false; return; }
-        decided = true;
-      }
-      var next = Math.min(0, Math.max(-width - 24, offset + dx));
-      body.style.transform = "translateX(" + next + "px)";
-    }, { passive: true });
-
-    body.addEventListener("touchend", function () {
-      if (!dragging) return;
-      dragging = false;
-      var current = readOffset(body);
-      if (current < -width / 2) {
-        slide(body, -width);
-        openSwipe = body;
-      } else {
-        slide(body, 0);
-        if (openSwipe === body) openSwipe = null;
-      }
-    });
-
-    wrap.appendChild(tray);
-    wrap.appendChild(body);
-    return wrap;
-  }
-
-  function readOffset(el) {
-    var m = /translateX\((-?[\d.]+)px\)/.exec(el.style.transform || "");
-    return m ? Number(m[1]) : 0;
-  }
-
-  function removeRow(wrap) {
-    wrap.style.maxHeight = wrap.offsetHeight + "px";
-    wrap.classList.add("removing");
-    setTimeout(function () { if (wrap.parentNode) wrap.parentNode.removeChild(wrap); }, 220);
-  }
-
-  function deleteTask(taskId, wrap) {
-    removeRow(wrap);
-    call("deleteTask", { id: taskId })
-      .then(function () { return refreshAll(); })
-      .catch(function (err) { alert(err.message); refreshAll(); });
-  }
-
-  function finishTask(taskId, wrap) {
-    removeRow(wrap);
-    call("updateTask", { id: taskId, patch: { status: "完了" } })
-      .then(function () { return refreshAll(); })
-      .catch(function (err) { alert(err.message); refreshAll(); });
-  }
-
-  function taskActions(taskId) {
-    return [
-      { label: "完了", className: "act-done", run: function (wrap) { finishTask(taskId, wrap); } },
-      { label: "削除", className: "act-del", run: function (wrap) { deleteTask(taskId, wrap); } }
-    ];
-  }
-
-  function renderError(box, message) {
+  function renderEmpty(box, message) {
     box.textContent = "";
     var div = document.createElement("div");
     div.className = "empty";
@@ -1195,7 +981,95 @@ if (typeof module !== "undefined" && module.exports) {
     box.appendChild(div);
   }
 
-  /* ---------- 追加シート ---------- */
+  /* ---------- これから ---------- */
+
+  function loadUpcoming() {
+    return call("getUpcoming", { now: new Date().toISOString() })
+      .then(function (data) {
+        state.upcoming = data;
+        renderUpcoming();
+      })
+      .catch(function (err) { renderEmpty($("nextBody"), err.message); });
+  }
+
+  function renderUpcoming() {
+    var box = $("nextBody");
+    box.textContent = "";
+    var data = state.upcoming;
+    if (!data) return;
+
+    var any = false;
+    data.buckets.forEach(function (bucket) {
+      if (!bucket.days.length) return;
+      any = true;
+
+      var title = document.createElement("div");
+      title.className = "group-title";
+      title.textContent = bucket.label;
+      box.appendChild(title);
+
+      var group = document.createElement("div");
+      group.className = "group";
+      bucket.days.forEach(function (day) { group.appendChild(dayCell(day)); });
+      box.appendChild(group);
+    });
+
+    if (!any) {
+      renderEmpty(box, "二週間先までに置かれたものはありません");
+      return;
+    }
+
+    if (data.beyondMin) {
+      var note = document.createElement("div");
+      note.className = "banner";
+      note.textContent = "二週間より先に " + hoursMinutes(data.beyondMin) + " ぶん置かれています";
+      box.appendChild(note);
+    }
+  }
+
+  function dayCell(day) {
+    var cell = document.createElement("div");
+    cell.className = "cell";
+
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "inner plain";
+    btn.style.width = "100%";
+
+    var mid = document.createElement("span");
+    var title = document.createElement("span");
+    title.className = "title";
+    title.textContent = dateLabel(day.date);
+    var meta = document.createElement("span");
+    meta.className = "meta";
+    meta.textContent = day.taskCount + "件 " + hoursMinutes(day.plannedMin);
+    mid.appendChild(title);
+    mid.appendChild(document.createElement("br"));
+    mid.appendChild(meta);
+
+    var right = document.createElement("span");
+    right.className = "right";
+    (day.categories || []).forEach(function (c) {
+      var dot = document.createElement("span");
+      dot.className = "dot";
+      dot.style.setProperty("--cat", categoryVar(c));
+      right.appendChild(dot);
+    });
+    var chev = document.createElement("span");
+    chev.textContent = "›";
+    right.appendChild(chev);
+
+    btn.appendChild(mid);
+    btn.appendChild(right);
+    btn.addEventListener("click", function () {
+      switchTab("day");
+      loadDay(day.date);
+    });
+    cell.appendChild(btn);
+    return cell;
+  }
+
+  /* ---------- 追加 ---------- */
 
   function openAdd() {
     state.touched = {};
@@ -1303,10 +1177,7 @@ if (typeof module !== "undefined" && module.exports) {
     var gotResult = false;
     var gotError = false;
 
-    recognition.onstart = function () {
-      setMic(true);
-      $("addMsg").textContent = "";
-    };
+    recognition.onstart = function () { setMic(true); $("addMsg").textContent = ""; };
     recognition.onresult = function (e) {
       gotResult = true;
       var text = "";
@@ -1318,23 +1189,23 @@ if (typeof module !== "undefined" && module.exports) {
       gotError = true;
       var code = e && e.error ? e.error : "unknown";
       if (code === "not-allowed" || code === "service-not-allowed") {
-        $("addMsg").textContent = "マイクが許可されていません（" + code + "）。このページはGoogleの枠内で動いているため、許可しても届かないことがあります。";
+        $("addMsg").textContent = "マイクが許可されていません（" + code + "）。";
         $("catchInput").focus(); // マイクを開けなかったときだけフォーカスする
       } else if (code === "no-speech") {
         $("addMsg").textContent = "聞き取れませんでした。もう一度押して話してください。";
       } else if (code === "audio-capture") {
         $("addMsg").textContent = "マイクが見つかりませんでした（audio-capture）。";
       } else if (code === "language-not-supported") {
-        $("addMsg").textContent = "この端末は日本語の音声認識に対応していません（language-not-supported）。";
+        $("addMsg").textContent = "この端末は日本語の音声認識に対応していません。";
       } else {
-        $("addMsg").textContent = "音声を認識できませんでした（" + code + "）。文字で入力してください。";
+        $("addMsg").textContent = "音声を認識できませんでした（" + code + "）。";
       }
     };
     recognition.onend = function () {
       setMic(false);
       recognition = null;
       if (!gotResult && !gotError) {
-        $("addMsg").textContent = "認識が始まらずに終了しました（結果もエラーもなし）。文字で入力してください。";
+        $("addMsg").textContent = "認識が始まらずに終了しました。文字で入力してください。";
       }
     };
 
@@ -1342,7 +1213,7 @@ if (typeof module !== "undefined" && module.exports) {
     catch (err) {
       setMic(false);
       recognition = null;
-      $("addMsg").textContent = "マイクを開けませんでした（" + String(err && err.name || err) + "）。文字で入力してください。";
+      $("addMsg").textContent = "マイクを開けませんでした（" + String(err && err.name || err) + "）。";
       $("catchInput").focus();
     }
   }
@@ -1361,7 +1232,7 @@ if (typeof module !== "undefined" && module.exports) {
     $("micLabel").textContent = listening ? "聞いています（押すと止まる）" : "話して追加";
   }
 
-  /* ---------- タスク詳細 ---------- */
+  /* ---------- 詳細 ---------- */
 
   function openDetail(taskId) {
     state.detailTaskId = taskId;
@@ -1374,25 +1245,16 @@ if (typeof module !== "undefined" && module.exports) {
     $("detailWarn").textContent = "";
 
     call("getTask", { id: taskId })
-      .then(function (t) { renderDetail(t); })
+      .then(renderDetail)
       .catch(function (err) { $("detailTitle").textContent = err.message; });
   }
 
   function renderDetail(t) {
     $("detailTitle").textContent = t.title;
-    $("detailSub").textContent = [t.category, (t.remainMin != null ? t.remainMin : t.estimateMin) + "分", t.due || "期限なし"]
-      .join(" · ");
+    $("detailSub").textContent = [t.category, (t.remainMin != null ? t.remainMin : t.estimateMin) + "分", t.due || "期限なし"].join(" · ");
 
     var warn = warningFor(t.id);
-    var box = $("detailWarn");
-    box.textContent = "";
-    if (warn) {
-      var p = document.createElement("div");
-      p.style.color = "var(--alert)";
-      p.style.fontSize = "13px";
-      p.textContent = reasonText(warn);
-      box.appendChild(p);
-    }
+    $("detailWarn").textContent = warn ? reasonText(warn) : "";
 
     var facts = $("detailFacts");
     facts.textContent = "";
@@ -1405,18 +1267,21 @@ if (typeof module !== "undefined" && module.exports) {
   }
 
   function warningFor(taskId) {
-    var list = (state.today && state.today.warnings) || [];
+    var list = (state.day && state.day.warnings) || [];
     for (var i = 0; i < list.length; i++) if (list[i].taskId === taskId) return list[i];
     return null;
   }
 
-  function addFact(dl, term, value) {
+  function addFact(box, term, value) {
+    var wrap = document.createElement("dl");
+    wrap.className = "fact";
     var dt = document.createElement("dt");
     dt.textContent = term;
     var dd = document.createElement("dd");
     dd.textContent = value;
-    dl.appendChild(dt);
-    dl.appendChild(dd);
+    wrap.appendChild(dt);
+    wrap.appendChild(dd);
+    box.appendChild(wrap);
   }
 
   function closeDetail() {
@@ -1425,35 +1290,36 @@ if (typeof module !== "undefined" && module.exports) {
     state.detailTaskId = null;
   }
 
+  function mutate(action, payload, onError) {
+    return call(action, payload)
+      .then(function () { closeDetail(); closeSwipes(); return refreshAll(); })
+      .catch(function (err) { (onError || function (m) { $("detailMsg").textContent = m; })(err.message); });
+  }
+
   function startTask(taskId) {
     if (!state.startLogged) {
       logKpi("firstStart", Date.now() - state.openedAt);
       state.startLogged = true;
     }
-    return call("updateTask", { id: taskId, patch: { status: "進行中" } })
-      .then(function () { closeDetail(); return refreshAll(); })
-      .catch(function (err) { $("detailMsg").textContent = err.message; });
+    return mutate("updateTask", { id: taskId, patch: { status: "進行中" } });
   }
 
   function completeTask(taskId) {
-    return call("updateTask", { id: taskId, patch: { status: "完了" } })
-      .then(function () { closeDetail(); return refreshAll(); })
-      .catch(function (err) { $("detailMsg").textContent = err.message; });
+    return mutate("updateTask", { id: taskId, patch: { status: "完了" } });
   }
 
   function deferTask(taskId) {
-    return call("updateTask", { id: taskId, patch: { notBefore: addDaysKey(todayKey(), 1), status: "未着手" } })
-      .then(function () { closeDetail(); return refreshAll(); })
-      .catch(function (err) { $("detailMsg").textContent = err.message; });
+    return mutate("updateTask", { id: taskId, patch: { notBefore: addDaysKey(todayKey(), 1), status: "未着手" } });
+  }
+
+  function deleteTask(taskId) {
+    return mutate("deleteTask", { id: taskId });
   }
 
   /* ---------- 設定 ---------- */
 
   var SETTING_FIELDS = [
-    ["作業時間", [
-      ["workStart", "開始", "time"],
-      ["workEnd", "終了", "text"]
-    ]],
+    ["作業時間", [["workStart", "開始", "time"], ["workEnd", "終了", "text"]]],
     ["ブロック", [
       ["chunkMinMin", "最短（分）", "number"],
       ["chunkMaxMin", "最長（分）", "number"],
@@ -1461,14 +1327,8 @@ if (typeof module !== "undefined" && module.exports) {
       ["bufferMin", "予定前後（分）", "number"],
       ["horizonDays", "何日先まで", "number"]
     ]],
-    ["分類", [
-      ["categories", "名前（カンマ区切り）", "text"],
-      ["defaultCategory", "未判定のときの分類", "text"]
-    ]],
-    ["カレンダー", [
-      ["readCalendarIds", "読み込む（カンマ区切り）", "text"],
-      ["ignoreEventPattern", "無視する予定（カンマ区切り）", "text"]
-    ]]
+    ["分類", [["categories", "名前", "text"], ["defaultCategory", "未判定のとき", "text"]]],
+    ["カレンダー", [["readCalendarIds", "読み込む", "text"], ["ignoreEventPattern", "無視する予定", "text"]]]
   ];
 
   function renderSettings() {
@@ -1483,15 +1343,17 @@ if (typeof module !== "undefined" && module.exports) {
       return;
     }
 
-    SETTING_FIELDS.forEach(function (group) {
-      var label = document.createElement("div");
-      label.className = "set-group";
-      label.textContent = group[0];
-      box.appendChild(label);
+    SETTING_FIELDS.forEach(function (grp) {
+      var title = document.createElement("div");
+      title.className = "group-title";
+      title.textContent = grp[0];
+      box.appendChild(title);
 
-      group[1].forEach(function (field) {
+      var group = document.createElement("div");
+      group.className = "group";
+      grp[1].forEach(function (field) {
         var row = document.createElement("div");
-        row.className = "set-row";
+        row.className = "field";
         var lab = document.createElement("label");
         lab.textContent = field[1];
         lab.setAttribute("for", "set_" + field[0]);
@@ -1502,58 +1364,54 @@ if (typeof module !== "undefined" && module.exports) {
         input.value = Array.isArray(value) ? value.join(",") : (value == null ? "" : value);
         row.appendChild(lab);
         row.appendChild(input);
-        box.appendChild(row);
+        group.appendChild(row);
       });
+      box.appendChild(group);
     });
 
     var save = document.createElement("button");
-    save.className = "action-btn primary";
+    save.className = "bigbtn filled";
     save.type = "button";
     save.textContent = "保存して作り直す";
     save.addEventListener("click", saveSettingsFromForm);
     box.appendChild(save);
 
     var regen = document.createElement("button");
-    regen.className = "action-btn";
+    regen.className = "bigbtn";
     regen.type = "button";
     regen.textContent = "いま時間割を作り直す";
     regen.addEventListener("click", function () {
       regen.disabled = true;
-      regen.textContent = "作り直しています";
       call("regenerate", { now: new Date().toISOString() })
-        .then(function () { return refreshAll(); })
+        .then(refreshAll)
         .catch(function () {})
-        .then(function () { regen.disabled = false; regen.textContent = "いま時間割を作り直す"; });
+        .then(function () { regen.disabled = false; });
     });
     box.appendChild(regen);
 
     if (!window.DP_NEEDS_CONNECTION) box.appendChild(codeSection());
-
-    if (window.DP_FRAME_ALLOW) {
-      var probe = document.createElement("div");
-      probe.className = "note";
-      probe.textContent = "iframe allow: " + window.DP_FRAME_ALLOW;
-      box.appendChild(probe);
-    }
   }
 
   /** GAS 側の画面でだけ出す。iPhone に入れる PWA へ渡す接続コード。 */
   function codeSection() {
     var wrap = document.createElement("div");
-    var label = document.createElement("div");
-    label.className = "set-group";
-    label.textContent = "iPhone用の接続コード";
-    wrap.appendChild(label);
+    var title = document.createElement("div");
+    title.className = "group-title";
+    title.textContent = "iPhone用の接続コード";
+    wrap.appendChild(title);
 
-    var field = document.createElement("label");
-    field.className = "wide";
-    field.textContent = "この1行をPWAの設定に貼る";
+    var group = document.createElement("div");
+    group.className = "group";
+    var row = document.createElement("div");
+    row.className = "field";
     var input = document.createElement("input");
     input.type = "text";
     input.readOnly = true;
+    input.style.textAlign = "left";
     input.value = "取得しています";
-    field.appendChild(input);
-    wrap.appendChild(field);
+    row.appendChild(input);
+    group.appendChild(row);
+    wrap.appendChild(group);
 
     call("connectionCode")
       .then(function (r) { input.value = r.code; })
@@ -1564,43 +1422,41 @@ if (typeof module !== "undefined" && module.exports) {
 
   function connectionSection() {
     var wrap = document.createElement("div");
-    var label = document.createElement("div");
-    label.className = "set-group";
-    label.textContent = "接続";
-    wrap.appendChild(label);
+    var title = document.createElement("div");
+    title.className = "group-title";
+    title.textContent = "接続";
+    wrap.appendChild(title);
 
-    var field = document.createElement("label");
-    field.className = "wide";
-    field.textContent = "接続コード";
+    var group = document.createElement("div");
+    group.className = "group";
+    var row = document.createElement("div");
+    row.className = "field";
     var input = document.createElement("input");
     input.type = "text";
     input.id = "connCode";
-    input.placeholder = "スプレッドシートのメニューから取得した1行を貼る";
-    field.appendChild(input);
-    wrap.appendChild(field);
+    input.style.textAlign = "left";
+    input.placeholder = "接続コードを貼る";
+    row.appendChild(input);
+    group.appendChild(row);
+    wrap.appendChild(group);
 
     var msg = document.createElement("div");
     msg.className = "msg";
-    msg.id = "connMsg";
     wrap.appendChild(msg);
 
     var btn = document.createElement("button");
-    btn.className = "action-btn";
+    btn.className = "bigbtn filled";
     btn.type = "button";
     btn.textContent = window.DP_CONNECTION ? "接続しなおす" : "接続する";
     btn.addEventListener("click", function () {
-      try {
-        saveConnection(input.value.trim());
-      } catch (e) {
-        msg.textContent = "接続コードを読み取れませんでした。もう一度貼り直してください。";
-        return;
-      }
-      msg.textContent = "接続を確認しています";
+      try { saveConnection(input.value.trim()); }
+      catch (e) { msg.textContent = "接続コードを読み取れませんでした。"; return; }
+      msg.textContent = "確認しています";
       call("ping")
         .then(function () {
           msg.textContent = "";
           state.settings = null;
-          return refreshAll().then(function () { switchTab("today"); });
+          return refreshAll().then(function () { switchTab("day"); });
         })
         .catch(function (err) { msg.textContent = err.message; });
     });
@@ -1610,8 +1466,8 @@ if (typeof module !== "undefined" && module.exports) {
 
   function saveSettingsFromForm() {
     var patch = {};
-    SETTING_FIELDS.forEach(function (group) {
-      group[1].forEach(function (field) {
+    SETTING_FIELDS.forEach(function (grp) {
+      grp[1].forEach(function (field) {
         var input = $("set_" + field[0]);
         if (input) patch[field[0]] = input.value;
       });
@@ -1622,14 +1478,14 @@ if (typeof module !== "undefined" && module.exports) {
         state.settings = s;
         return call("regenerate", { now: new Date().toISOString() });
       })
-      .then(function () { return refreshAll(); })
+      .then(refreshAll)
       .catch(function (err) { alert(err.message); });
   }
 
   /* ---------- KPI ---------- */
 
   function logKpi(kind, ms) {
-    try { call("logEvent", { kind: kind, detail: String(Math.round(ms / 100) / 10) + "秒" }); }
+    try { window.DP_CALL("logEvent", { kind: kind, detail: String(Math.round(ms / 100) / 10) + "秒" }); }
     catch (e) {}
   }
 
@@ -1637,41 +1493,46 @@ if (typeof module !== "undefined" && module.exports) {
 
   function switchTab(name) {
     state.view = name;
-    $("viewToday").hidden = name !== "today";
-    $("viewTasks").hidden = name !== "tasks";
+    $("viewDay").hidden = name !== "day";
+    $("viewNext").hidden = name !== "next";
     $("viewSettings").hidden = name !== "settings";
     $("fab").hidden = name === "settings";
+    closeSwipes();
 
     var buttons = document.querySelectorAll(".tabbar button");
     for (var i = 0; i < buttons.length; i++) {
-      var isCurrent = buttons[i].getAttribute("data-tab") === name;
-      if (isCurrent) buttons[i].setAttribute("aria-current", "page");
+      if (buttons[i].getAttribute("data-tab") === name) buttons[i].setAttribute("aria-current", "page");
       else buttons[i].removeAttribute("aria-current");
     }
 
-    if (name === "today") {
-      $("screenTitle").textContent = state.today ? dateLabel(state.today.date) : "今日";
-      $("totals").hidden = false;
-      renderToday();
-    } else {
-      $("totals").hidden = true;
-      $("screenTitle").textContent = name === "tasks" ? "タスク" : "設定";
-    }
-    if (name === "tasks") loadTasks();
+    if (name === "next") loadUpcoming();
     if (name === "settings") renderSettings();
   }
 
   function refreshAll() {
-    var jobs = [loadToday()];
-    if (state.view === "tasks") jobs.push(loadTasks());
+    var jobs = [];
+    if (state.dayKey && state.dayKey !== todayKey()) jobs.push(loadDay(state.dayKey));
+    else jobs.push(loadToday(false));
+    if (state.view === "next") jobs.push(loadUpcoming());
     return Promise.all(jobs);
   }
 
   /* ---------- 起動 ---------- */
 
   function boot() {
-    document.querySelectorAll(".tabbar button").forEach(function (b) {
-      b.addEventListener("click", function () { switchTab(b.getAttribute("data-tab")); });
+    var tabs = document.querySelectorAll(".tabbar button");
+    for (var i = 0; i < tabs.length; i++) {
+      (function (b) {
+        b.addEventListener("click", function () {
+          if (b.getAttribute("data-tab") === "day" && state.dayKey !== todayKey()) loadToday(false);
+          switchTab(b.getAttribute("data-tab"));
+        });
+      })(tabs[i]);
+    }
+
+    $("backBtn").addEventListener("click", function () {
+      loadToday(true);
+      switchTab("next");
     });
 
     $("fab").addEventListener("click", function () {
@@ -1688,31 +1549,24 @@ if (typeof module !== "undefined" && module.exports) {
     $("fPriority").addEventListener("change", function () { state.touched.priority = true; });
 
     var mic = $("micBtn");
-    if (mic) {
-      if (!voiceSupported()) mic.hidden = true;
-      else mic.addEventListener("click", startVoice);
-    }
+    if (!voiceSupported()) mic.hidden = true;
+    else mic.addEventListener("click", startVoice);
 
     $("detailClose").addEventListener("click", closeDetail);
     $("detailBackdrop").addEventListener("click", closeDetail);
     $("actStart").addEventListener("click", function () { startTask(state.detailTaskId); });
     $("actDone").addEventListener("click", function () { completeTask(state.detailTaskId); });
     $("actDefer").addEventListener("click", function () { deferTask(state.detailTaskId); });
-    $("actDelete").addEventListener("click", function () {
-      var id = state.detailTaskId;
-      if (!id) return;
-      closeDetail();
-      call("deleteTask", { id: id })
-        .then(function () { return refreshAll(); })
-        .catch(function (err) { alert(err.message); });
-    });
+    $("actDelete").addEventListener("click", function () { deleteTask(state.detailTaskId); });
+
+    $("scroll").addEventListener("scroll", function () { closeSwipes(); }, { passive: true });
 
     if (window.DP_NEEDS_CONNECTION && !loadConnection()) {
       switchTab("settings");
       return;
     }
-    switchTab("today");
-    loadToday();
+    switchTab("day");
+    loadToday(true);
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
