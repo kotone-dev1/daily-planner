@@ -792,12 +792,16 @@ var DP_PARSER = (function () {
       var frag = frags[i];
       var result = parse(frag.text, now, options);
 
+      // 見出しは、それを言った文の中だけで効く。
+      // 「今日中に、A、B。あとC」の C まで今日にすると、溜まっているだけのものが
+      // 今日の締切ものに化けてしまう。
+      if (frag.sepBefore === "strong") header = null;
+
       if (result.title) {
-        // 見出しは、それを言った文の中だけで効く。
-        // 「今日中に、A、B。あとC」の C まで今日にすると、溜まっているだけのものが
-        // 今日の締切ものに化けてしまう。
-        if (frag.sepBefore === "strong") header = null;
         items.push({ raw: frag.text, result: result, header: header });
+        // 「今日中にカット、テロップ」のように、期限を最初の項目にくっつけて喋ることが多い。
+        // 1回型の期限だけを後ろへ引き継ぐ。目標と日課の期限はそれ自身のものなので引き継がない。
+        if (result.due && result.kind === "task") header = result;
         continue;
       }
 
@@ -1569,8 +1573,13 @@ if (typeof module !== "undefined" && module.exports) {
     var bits = [];
     if (item.category) bits.push(item.category);
     if (item.kind === "goal") {
-      bits.push(item.quantity + (item.unit || "件") + "（現在" + (item.current || 0) + "）");
-      bits.push("1件" + item.perItemMin + "分");
+      var left = Math.max(0, (item.quantity || 0) - (item.current || 0));
+      var days = item.due ? Math.max(1, Math.round((parseKey(item.due) - parseKey(todayKey())) / 86400000) + 1) : 0;
+      bits.push((item.current || 0) + "/" + item.quantity + (item.unit || "件"));
+      if (days) {
+        bits.push(dateLabel(item.due) + "まで あと" + days + "日");
+        bits.push("週" + (Math.round(left / days * 70) / 10) + (item.unit || "件") + "のペース");
+      }
       if (item.needsDue) bits.push("いつまでに？");
     } else if (item.kind === "routine") {
       if (item.quantity) bits.push(item.quantity + (item.unit || "件") + (item.per === "week" ? "/週" : "/日"));
