@@ -155,12 +155,16 @@
 
   /* ---------- スワイプで削除 ---------- */
   .cell.swipe { overflow: hidden; }
-  .del-action {
-    position: absolute; top: 0; right: 0; bottom: 0; width: 88px;
-    background: var(--danger); color: #FFFFFF; font-size: 15px; font-weight: 600;
-    display: flex; align-items: center; justify-content: center;
+  .swipe-actions {
+    position: absolute; top: 0; right: 0; bottom: 0;
+    display: flex; align-items: stretch;
   }
-  .cell.open .inner { transform: translateX(-88px); }
+  .swipe-actions button {
+    width: 88px; color: #FFFFFF; font-size: 15px; font-weight: 600;
+  }
+  .swipe-actions .done { background: var(--cat-2); }
+  .swipe-actions .del { background: var(--danger); }
+  .cell.open .inner { transform: translateX(-176px); }
 
   /* ---------- 大きなボタン ---------- */
   .bigbtn {
@@ -896,16 +900,33 @@ if (typeof module !== "undefined" && module.exports) {
     for (var i = 0; i < open.length; i++) if (open[i] !== except) open[i].classList.remove("open");
   }
 
+  var SWIPE_WIDTH = 176; // 完了 88 + 削除 88
+
   function attachSwipe(cell, inner, taskId) {
+    var actions = document.createElement("div");
+    actions.className = "swipe-actions";
+
+    var done = document.createElement("button");
+    done.type = "button";
+    done.className = "done";
+    done.textContent = "完了";
+    done.addEventListener("click", function (e) {
+      e.stopPropagation();
+      completeTask(taskId);
+    });
+
     var del = document.createElement("button");
     del.type = "button";
-    del.className = "del-action";
+    del.className = "del";
     del.textContent = "削除";
     del.addEventListener("click", function (e) {
       e.stopPropagation();
       deleteTask(taskId);
     });
-    cell.insertBefore(del, cell.firstChild);
+
+    actions.appendChild(done);
+    actions.appendChild(del);
+    cell.insertBefore(actions, cell.firstChild);
 
     var startX = 0;
     var startY = 0;
@@ -933,8 +954,8 @@ if (typeof module !== "undefined" && module.exports) {
         decided = true;
         closeSwipes(cell);
       }
-      var base = cell.classList.contains("open") ? -88 : 0;
-      var offset = Math.max(-110, Math.min(0, base + dx));
+      var base = cell.classList.contains("open") ? -SWIPE_WIDTH : 0;
+      var offset = Math.max(-SWIPE_WIDTH - 20, Math.min(0, base + dx));
       inner.style.transition = "none";
       inner.style.transform = "translateX(" + offset + "px)";
     }, { passive: true });
