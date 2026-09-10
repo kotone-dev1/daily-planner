@@ -532,6 +532,17 @@ var DP_PARSER = (function () {
       [new RegExp("(\\d{1,2})\\s*月\\s*(?:まで(?:に)?|をめど|目処)"), function (m) {
         return endOfMonth(today, Number(m[1]) - 1);
       }],
+      // 「10/10」「10.10」「2027/1/5」。打つときはこの形が多い。
+      [new RegExp("(\\d{4})[/.\\-](\\d{1,2})[/.\\-](\\d{1,2})" + UNTIL), function (m) {
+        return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      }],
+      [new RegExp("(?:^|[^\\d:])(\\d{1,2})[/.](\\d{1,2})(?![\\d:])" + UNTIL), function (m) {
+        var month = Number(m[1]) - 1;
+        var day = Number(m[2]);
+        var d = new Date(today.getFullYear(), month, day);
+        if (d < today) d = new Date(today.getFullYear() + 1, month, day);
+        return d;
+      }],
       [new RegExp("(\\d+)\\s*月\\s*(\\d+)\\s*日" + UNTIL), function (m) {
         var month = Number(m[1]) - 1;
         var day = Number(m[2]);
@@ -693,9 +704,14 @@ var DP_PARSER = (function () {
 
     var cadenceValue = cadence.value;
     var kind = "task";
+    var needsDue = false;
     if (cadenceValue) kind = "routine";
-    else if (quantity.value !== null && quantity.unit && dueText) kind = "goal";
-    else if (project.value) kind = "project";
+    else if (quantity.value !== null && quantity.unit) {
+      // 期限が無くても目標として返す。1回きりの作業なら確認画面で直せばよい。
+      // 黙って1回型のタスクにすると、ノルマが30分の作業として埋もれる。
+      kind = "goal";
+      needsDue = !dueText;
+    } else if (project.value) kind = "project";
 
     // 数で数える目標・日課で、1件あたりが書かれていなければ、素の見積をそれとみなす。
     // 「取材20件 45分」の45分は合計ではなく1件ぶん、と読むのが自然なため。
@@ -717,6 +733,7 @@ var DP_PARSER = (function () {
       per: cadenceValue ? cadenceValue.per : null,
       weekdays: cadenceValue && cadenceValue.weekdays.length ? cadenceValue.weekdays : null,
       projectType: project.value,
+      needsDue: needsDue,
       category: guessCategory(original, opts.categoryHints)
     };
   }
@@ -776,6 +793,10 @@ var DP_PARSER = (function () {
       var result = parse(frag.text, now, options);
 
       if (result.title) {
+        // 見出しは、それを言った文の中だけで効く。
+        // 「今日中に、A、B。あとC」の C まで今日にすると、溜まっているだけのものが
+        // 今日の締切ものに化けてしまう。
+        if (frag.sepBefore === "strong") header = null;
         items.push({ raw: frag.text, result: result, header: header });
         continue;
       }
@@ -1429,7 +1450,8 @@ if (typeof module !== "undefined" && module.exports) {
         current: r.current || 0,
         perItemMin: r.perItemMin || (r.kind === "goal" || (r.kind === "routine" && r.quantity) ? DEFAULT_ESTIMATE : null),
         per: r.per,
-        weekdays: r.weekdays
+        weekdays: r.weekdays,
+        needsDue: !!r.needsDue
       };
     });
 
@@ -1445,6 +1467,7 @@ if (typeof module !== "undefined" && module.exports) {
   function reviewBuckets() {
     var today = todayKey();
     var groups = [
+      { label: "期限を決めてください", test: function (r) { return r.needsDue; } },
       { label: "毎日・毎週", test: function (r) { return r.kind === "routine"; } },
       { label: "今日", test: function (r) { return r.due && r.due <= today; } },
       { label: "明日", test: function (r) { return r.due === addDaysKey(today, 1); } },
@@ -1548,6 +1571,7 @@ if (typeof module !== "undefined" && module.exports) {
     if (item.kind === "goal") {
       bits.push(item.quantity + (item.unit || "件") + "（現在" + (item.current || 0) + "）");
       bits.push("1件" + item.perItemMin + "分");
+      if (item.needsDue) bits.push("いつまでに？");
     } else if (item.kind === "routine") {
       if (item.quantity) bits.push(item.quantity + (item.unit || "件") + (item.per === "week" ? "/週" : "/日"));
       if (item.perItemMin) bits.push("1件" + item.perItemMin + "分");
@@ -1600,6 +1624,7 @@ if (typeof module !== "undefined" && module.exports) {
     item.estimateMin = Number($("eEstimate").value) || null;
     item.provisional = false;
     item.due = $("eDue").value || null;
+    item.needsDue = item.kind === "goal" && !item.due;
     item.priority = Number($("ePriority").value) || 3;
     item.category = $("eCategory").value;
     item.quantity = Number($("eQuantity").value) || null;
@@ -1627,6 +1652,15 @@ if (typeof module !== "undefined" && module.exports) {
 
   function saveAll() {
     if (!review.length) return;
+
+    // 目標は期限が無いと配分（今日ぶん何件か）を計算できない。ここで止める。
+    var missing = review.filter(function (r) { return r.kind === "goal" && !r.due; });
+    if (missing.length) {
+      $("reviewMsg").textContent =
+        "「" + missing[0].title + "」の期限を決めてください。いつまでかが無いと1日ぶんを計算できません。";
+      return;
+    }
+
     $("saveAll").disabled = true;
     $("reviewMsg").textContent = "保存しています";
 
