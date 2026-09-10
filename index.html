@@ -458,10 +458,67 @@
     <button type="button" id="actDone">完了</button>
     <button type="button" id="actDefer">延期</button>
   </div>
+  <div class="fields" id="taskEditFields">
+    <div class="field">
+      <label for="tTitle">題</label>
+      <input type="text" id="tTitle" autocomplete="off" style="text-align:left">
+    </div>
+    <div class="field">
+      <label for="tEstimate">残り</label>
+      <input type="number" id="tEstimate" min="5" step="5" inputmode="numeric" placeholder="分">
+    </div>
+    <div class="field">
+      <label for="tDue">期限</label>
+      <input type="date" id="tDue">
+    </div>
+    <div class="field">
+      <label for="tPriority">優先</label>
+      <select id="tPriority">
+        <option value="1">最優先</option>
+        <option value="2">急ぎ</option>
+        <option value="3">通常</option>
+        <option value="4">いつでも</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="tCategory">分類</label>
+      <select id="tCategory"></select>
+    </div>
+  </div>
+  <button class="bigbtn filled" id="actSaveTask" type="button">直した内容で保存</button>
+  <div class="fields" id="detailEdit">
+    <div class="field">
+      <label for="dTitle">題</label>
+      <input type="text" id="dTitle" autocomplete="off" style="text-align:left">
+    </div>
+    <div class="field">
+      <label for="dEstimate">残り</label>
+      <input type="number" id="dEstimate" min="5" step="5" inputmode="numeric" placeholder="分">
+    </div>
+    <div class="field">
+      <label for="dDue">期限</label>
+      <input type="date" id="dDue">
+    </div>
+    <div class="field">
+      <label for="dPriority">優先</label>
+      <select id="dPriority">
+        <option value="1">最優先</option>
+        <option value="2">急ぎ</option>
+        <option value="3">通常</option>
+        <option value="4">いつでも</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="dCategory">分類</label>
+      <select id="dCategory"></select>
+    </div>
+  </div>
+  <button class="bigbtn" id="detailSave" type="button">直したことを保存</button>
   <button class="bigbtn" id="actDelete" type="button" style="color: var(--danger)">削除</button>
   <div class="msg" id="detailMsg"></div>
 </div>
 
+<script>window.DP_BUILD="20260910174107";</script>
 <script>
 /**
  * 一言テキストを タイトル / 見積分 / 期限 / 優先度 に分解し、
@@ -634,8 +691,13 @@ var DP_PARSER = (function () {
     return { value: null, rest: text };
   }
 
+  // 喋ったときに付く言い回し。題に残ると邪魔なので落とす。
+  var FILLER = /(?:溜ま|たま)(?:って|った)(?:る|いる)?|残って(?:る|いる)?|あるのが|ぶん(?=$|\s)/g;
+
   function cleanTitle(text) {
-    var t = text
+    var t = String(text)
+      .replace(FILLER, " ")
+      .replace(/(?:が|は|を|の|で)\s*$/, " ")
       .replace(/\s+/g, " ")
       .replace(/^[\s、。・,.\-–—:：]+/, "")
       .replace(/[\s、。・,.\-–—:：]+$/, "")
@@ -725,6 +787,70 @@ var DP_PARSER = (function () {
     return null;
   }
 
+  /* ---------- 言葉から所要時間を決める（人に聞かない） ---------- */
+
+  var FALLBACK_ESTIMATE = 30;
+
+  /** 「工程名=分」をカンマで並べた表を読む。設定から渡される。 */
+  function parseEstimateTable(spec) {
+    var table = [];
+    String(spec || "").split(/[,、|]/).forEach(function (pair) {
+      var kv = pair.split("=");
+      if (kv.length !== 2) return;
+      var word = kv[0].trim();
+      var minutes = Number(kv[1]);
+      if (word && isFinite(minutes) && minutes > 0) table.push([word, minutes]);
+    });
+    // 長い語を先に当てる（「素材取り込み」が「素材」に食われないように）
+    table.sort(function (a, b) { return b[0].length - a[0].length; });
+    return table;
+  }
+
+  /**
+   * 題から所要時間を決める。分からなければ 30分。
+   * 見積を尋ねる画面を出さないためにあり、外れても実績で直る前提で置いている。
+   */
+  function estimateBase(text, options) {
+    var opts = options || {};
+    var table = opts.estimateTable || parseEstimateTable(opts.taskEstimates);
+    var body = String(text || "");
+
+    for (var i = 0; i < table.length; i++) {
+      if (body.indexOf(table[i][0]) >= 0) return { base: table[i][1], matched: true };
+    }
+    // 直前の話題を引き継ぐ。「編集が10人分。4が半分」の「4が半分」に
+    // 編集の時間を当てるため。無ければ 30分。
+    var carried = Number(opts.carryBase);
+    return { base: isFinite(carried) && carried > 0 ? carried : FALLBACK_ESTIMATE, matched: false };
+  }
+
+  function estimateFor(text, options) {
+    var body = String(text || "");
+    var found = estimateBase(body, options);
+    var ratio = progressRatio(body);
+    return roundTo5(found.base * (ratio == null ? 1 : ratio));
+  }
+
+  /** 「1〜3」「5から10」のような範囲。何本ぶんかを数える。 */
+  var RANGE_RE = /(\d+)\s*(?:〜|~|～|-|から)\s*(\d+)\s*(?:は|が|の)?/;
+
+  /** 「10人分」「3本分」＝ その数だけ溜まっている。 */
+  var STOCK_RE = new RegExp("(\\d+)\\s*(?:" + COUNT_UNITS + ")\\s*分(?![0-9])");
+
+  function takeRange(text) {
+    var stock = text.match(STOCK_RE);
+    if (stock) {
+      var n = Number(stock[1]);
+      if (n > 0) return { count: Math.min(n, 100), rest: text.replace(STOCK_RE, " ") };
+    }
+    var m = text.match(RANGE_RE);
+    if (!m) return { count: null, rest: text };
+    var from = Number(m[1]);
+    var to = Number(m[2]);
+    if (!(to >= from) || to - from > 200) return { count: null, rest: text };
+    return { count: to - from + 1, rest: text.replace(RANGE_RE, " ") };
+  }
+
   /**
    * @param {string} text 一言入力
    * @param {Date} now 現在時刻
@@ -741,6 +867,9 @@ var DP_PARSER = (function () {
     var rest = original;
 
     // 1件あたりの見積を先に抜く。素の見積規則に「1件90分」の90分を食わせないため。
+    var range = takeRange(rest);
+    rest = range.rest;
+
     var perItem = takeFirst(rest, PER_ITEM_RULES);
     rest = perItem.rest;
 
@@ -787,9 +916,25 @@ var DP_PARSER = (function () {
       estimateMin = null;
     }
 
+    var title = cleanTitle(rest);
+    var count = range.count || 1;
+
+    // 見積を言わなかったときは、言葉から決める。人に聞かない。
+    // 題が無い断片（見出しや尻切れ）には埋めない。置くものが無いため。
+    if (title === null) {
+      // 何もしない
+    } else if ((kind === "goal" || kind === "routine") && quantity.value !== null) {
+      if (perItemMin == null) perItemMin = estimateFor(original, opts);
+    } else if (estimateMin == null) {
+      estimateMin = estimateFor(original, opts) * count;
+    } else {
+      estimateMin = estimateMin * count;
+    }
+
     return {
       kind: kind,
-      title: cleanTitle(rest),
+      title: title,
+      count: count,
       estimateMin: estimateMin,
       due: dueText,
       priority: priority.value == null ? DEFAULT_PRIORITY : priority.value,
@@ -855,9 +1000,35 @@ var DP_PARSER = (function () {
     var items = [];
     var header = null;
 
+    var carryBase = null;
+    var subjectLabel = null;
+    var subjectIndex = -1;
+    var brokenDown = false;
+    var stockTotal = null;
+
     for (var i = 0; i < frags.length; i++) {
       var frag = frags[i];
-      var result = parse(frag.text, now, options);
+      var withCarry = options || {};
+      if (carryBase) {
+        withCarry = {};
+        for (var key in (options || {})) withCarry[key] = options[key];
+        withCarry.carryBase = carryBase;
+      }
+      var result = parse(frag.text, now, withCarry);
+
+      // 「5以降はまっさら」は、総数を知らないと1本になってしまう。
+      // 直前に「10人分」と言われていれば、そこから残り本数を数える。
+      var tail = frag.text.match(/(\d+)\s*(?:以降|から先|以上)/);
+      if (tail && stockTotal) {
+        var from = Number(tail[1]);
+        if (from >= 1 && from <= stockTotal) {
+          var perOne = result.estimateMin && result.count ? result.estimateMin / result.count : result.estimateMin;
+          result.count = stockTotal - from + 1;
+          if (perOne) result.estimateMin = Math.round(perOne * result.count);
+        }
+      }
+      var matched = estimateBase(frag.text, options || {});
+      if (matched.matched) carryBase = matched.base;
 
       // 見出しは、それを言った文の中だけで効く。
       // 「今日中に、A、B。あとC」の C まで今日にすると、溜まっているだけのものが
@@ -865,6 +1036,18 @@ var DP_PARSER = (function () {
       if (frag.sepBefore === "strong") header = null;
 
       if (result.title) {
+        // 「編集が10人分。1〜3はほぼ完成」——後ろの文は何の話か言わない。
+        // 見積は carryBase で引き継げるが、題は引き継がないと
+        // 「ほぼ完成で細かい調整」が項目名になってしまう。
+        if (matched.matched) {
+          subjectLabel = result.title;
+          subjectIndex = items.length;
+          if (result.count > 1) stockTotal = result.count;
+        } else if (subjectLabel) {
+          result.title = subjectLabel + " " + result.title;
+          brokenDown = true;
+        }
+
         items.push({ raw: frag.text, result: result, header: header });
         // 「今日中にカット、テロップ」のように、期限を最初の項目にくっつけて喋ることが多い。
         // 1回型の期限だけを後ろへ引き継ぐ。目標と日課の期限はそれ自身のものなので引き継がない。
@@ -879,8 +1062,14 @@ var DP_PARSER = (function () {
       } else {
         var prev = items[items.length - 1];
         prev.raw = prev.raw + " " + frag.text;
-        prev.result = parse(prev.raw, now, options);
+        prev.result = parse(prev.raw, now, withCarry);
       }
+    }
+
+    // 「10人分」と言った後に内訳（1〜3は…、4は…）を言われたら、
+    // 最初の総数はもう別々に数えている。残すと二重に積むことになる。
+    if (brokenDown && subjectIndex >= 0 && items[subjectIndex] && items[subjectIndex].result.count > 1) {
+      items.splice(subjectIndex, 1);
     }
 
     return items.map(function (item) {
@@ -951,14 +1140,137 @@ var DP_PARSER = (function () {
     return out;
   }
 
-  return { parse: parse, parseMany: parseMany, parseFixed: parseFixed };
+  /* ---------- 「N人分溜まってる」をN件に開く ---------- */
+
+  var DEFAULT_ITEM_MIN = 60;
+  var MAX_BATCH = 50; // これ以上は現実的に扱えないので打ち切る
+
+  /**
+   * 進み具合の言葉を「残っている割合」に落とす。
+   * 所要時間を人に入力させないための表。数字を聞き返さないのがこのアプリの要点。
+   */
+  var PROGRESS_WORDS = [
+    [/ほぼ完成|ほぼ終わ|あと少し|あとちょっと|細かい調整|微調整|仕上げだけ|もう少し/, 0.15],
+    [/半分|半ば|途中|折り返し/, 0.5],
+    [/まっさら|手つかず|手をつけて|これから|まだ何も|ゼロ|未着手/, 1],
+    [/(\d+)\s*割\s*(?:終わ|でき|済)/, function (m) { return Math.max(0, 1 - Number(m[1]) / 10); }],
+    [/(\d+)\s*%\s*(?:終わ|でき|済)/, function (m) { return Math.max(0, 1 - Number(m[1]) / 100); }]
+  ];
+
+  function progressRatio(text) {
+    for (var i = 0; i < PROGRESS_WORDS.length; i++) {
+      var m = text.match(PROGRESS_WORDS[i][0]);
+      if (!m) continue;
+      var value = PROGRESS_WORDS[i][1];
+      return typeof value === "function" ? value(m) : value;
+    }
+    return null;
+  }
+
+  function roundTo5(minutes) {
+    return Math.max(5, Math.round(minutes / 5) * 5);
+  }
+
+  /**
+   * 「編集が10人分溜まってる。1〜3はほぼ完成、4が半分、5以降はまっさら」を
+   * 10件ぶんの下書きに開く。所要時間は言葉から推定し、聞き返さない。
+   *
+   * @returns {{title, count, unit, items: [{index, label, estimateMin, ratio}]}|null}
+   */
+  function parseBatch(text, now, options) {
+    var opts = options || {};
+    var body = normalize(text);
+
+    var countMatch = body.match(new RegExp("(\\d+)\\s*(" + COUNT_UNITS + ")\\s*分?"));
+    if (!countMatch) return null;
+    var count = Math.min(MAX_BATCH, Number(countMatch[1]));
+    if (!(count > 1)) return null;
+
+    // 「毎日アポ5件」のような日課を、まとめ扱いに誤解しないための歯止め。
+    // 溜まっている旨か、進み具合の言葉が無ければ、まとめとは見なさない。
+    var looksStocked = /溜ま|たま|残って|ストック|分溜|待ち/.test(body);
+    if (!looksStocked && progressRatio(body) === null) return null;
+
+    var perItem = takeFirst(body, PER_ITEM_RULES);
+    var baseMin = perItem.value || Number(opts.defaultItemMin) || DEFAULT_ITEM_MIN;
+
+    // 題は、件数と進み具合の説明を落とした残り。最初の文だけを見る。
+    var head = body.split(/[。\n]/)[0];
+    var title = cleanTitle(
+      head
+        .replace(countMatch[0], " ")
+        .replace(/溜ま(って|った)(る|いる)?|たまって(る|いる)?|残って(る|いる)?|ある/g, " ")
+        .replace(/が|は|を|の$/g, " ")
+    ) || "作業";
+
+    var ratios = [];
+    for (var i = 0; i < count; i++) ratios.push(1);
+
+    // 「1〜3は…」「4が…」「5以降は…」を拾って、その範囲だけ塗り替える
+    var clauseRe = /(\d+)\s*(?:〜|～|-|–|から)\s*(\d+)|(\d+)\s*(?:以降|から先|以上)|(\d+)/g;
+    var clauses = body.split(/[、,。\n]/);
+    for (var c = 0; c < clauses.length; c++) {
+      var clause = clauses[c];
+      var ratio = progressRatio(clause);
+      if (ratio === null) continue;
+
+      clauseRe.lastIndex = 0;
+      var found = clauseRe.exec(clause);
+      if (!found) continue;
+
+      var from;
+      var to;
+      if (found[1] !== undefined && found[2] !== undefined) {
+        from = Number(found[1]);
+        to = Number(found[2]);
+      } else if (found[3] !== undefined) {
+        from = Number(found[3]);
+        to = count;
+      } else {
+        from = Number(found[4]);
+        to = from;
+      }
+      for (var n = from; n <= to && n <= count; n++) {
+        if (n >= 1) ratios[n - 1] = ratio;
+      }
+    }
+
+    var items = [];
+    for (var k = 0; k < count; k++) {
+      items.push({
+        index: k + 1,
+        label: title + " " + (k + 1),
+        ratio: ratios[k],
+        estimateMin: roundTo5(baseMin * ratios[k])
+      });
+    }
+
+    return { title: title, count: count, unit: countMatch[2], items: items };
+  }
+
+  return {
+    parse: parse,
+    parseMany: parseMany,
+    parseFixed: parseFixed,
+    parseBatch: parseBatch,
+    estimateFor: estimateFor
+  };
 })();
 
 var parse = DP_PARSER.parse;
 var parseMany = DP_PARSER.parseMany;
+var parseFixed = DP_PARSER.parseFixed;
+var estimateFor = DP_PARSER.estimateFor;
+var parseBatch = DP_PARSER.parseBatch;
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { parse: DP_PARSER.parse, parseMany: DP_PARSER.parseMany, parseFixed: DP_PARSER.parseFixed };
+  module.exports = {
+    parse: DP_PARSER.parse,
+    parseMany: DP_PARSER.parseMany,
+    parseFixed: DP_PARSER.parseFixed,
+    parseBatch: DP_PARSER.parseBatch,
+    estimateFor: DP_PARSER.estimateFor
+  };
 }
 
 </script>
@@ -1570,11 +1882,23 @@ if (typeof module !== "undefined" && module.exports) {
     }
 
     review = parseMany(text, new Date(), parserOptions()).map(function (r) {
+      // 期限を言わなかった数量もの（「編集が10人分」）は、期限を聞かずに
+      // まとめて1件のタスクにする。日付を尋ねる画面を出さないため。
+      if (r.needsDue && r.quantity && r.perItemMin) {
+        r = {
+          kind: "task", title: r.title + " " + r.quantity + (r.unit || "件"),
+          estimateMin: r.quantity * r.perItemMin, due: null, priority: r.priority,
+          category: r.category, quantity: null, unit: null, current: 0,
+          perItemMin: null, per: null, weekdays: null, count: 1
+        };
+      }
+      return r;
+    }).map(function (r) {
       return {
         kind: r.kind === "project" ? "task" : r.kind, // 案件はまだ作れないので1回型に寄せる
         title: r.title,
         estimateMin: r.estimateMin || (r.perItemMin ? null : DEFAULT_ESTIMATE),
-        provisional: !r.estimateMin && !r.perItemMin,
+        provisional: false,
         due: r.due,
         priority: r.priority,
         category: r.category || (state.settings && state.settings.defaultCategory) || null,
@@ -1716,7 +2040,7 @@ if (typeof module !== "undefined" && module.exports) {
       if (item.estimateMin) bits.push(item.estimateMin + "分");
       if (item.weekdays) bits.push(item.weekdays.map(function (d) { return "日月火水木金土"[d]; }).join(""));
     } else {
-      bits.push(item.estimateMin + "分" + (item.provisional ? "（仮）" : ""));
+      bits.push(item.estimateMin + "分");
       if (item.due) bits.push(item.due.slice(5).replace("-", "/"));
     }
     return bits.join(" · ");
@@ -2097,11 +2421,23 @@ if (typeof module !== "undefined" && module.exports) {
   }
 
   function renderDetail(t) {
+    state.detailTask = t;
+    $("tTitle").value = t.title || "";
+    $("tEstimate").value = t.remainMin != null ? t.remainMin : (t.estimateMin || "");
+    $("tDue").value = t.due || "";
+    $("tPriority").value = String(t.priority || 3);
+    fillCategories($("tCategory"), t.category);
     $("detailTitle").textContent = t.title;
     $("detailSub").textContent = [t.category, (t.remainMin != null ? t.remainMin : t.estimateMin) + "分", t.due || "期限なし"].join(" · ");
 
     var warn = warningFor(t.id);
     $("detailWarn").textContent = warn ? reasonText(warn) : "";
+
+    $("dTitle").value = t.title || "";
+    $("dEstimate").value = t.remainMin != null ? t.remainMin : t.estimateMin;
+    $("dDue").value = t.due || "";
+    $("dPriority").value = String(t.priority || 3);
+    fillCategories($("dCategory"), t.category);
 
     var facts = $("detailFacts");
     facts.textContent = "";
@@ -2111,6 +2447,23 @@ if (typeof module !== "undefined" && module.exports) {
     addFact(facts, "優先度", PRIORITY_LABEL[t.priority] || "通常");
     if (t.memo) addFact(facts, "メモ", t.memo);
     if (t.sourceUrl) addFact(facts, "出典", t.sourceUrl);
+  }
+
+  function saveDetail() {
+    if (!state.detailTaskId) return;
+    var minutes = Number($("dEstimate").value) || null;
+    $("detailSave").disabled = true;
+    mutate("updateTask", {
+      id: state.detailTaskId,
+      patch: {
+        title: $("dTitle").value.trim(),
+        remainMin: minutes,
+        estimateMin: minutes,
+        due: $("dDue").value || "",
+        priority: Number($("dPriority").value) || 3,
+        category: $("dCategory").value
+      }
+    }).then(function () { $("detailSave").disabled = false; });
   }
 
   function warningFor(taskId) {
@@ -2161,6 +2514,31 @@ if (typeof module !== "undefined" && module.exports) {
 
   function deleteTask(taskId) {
     return mutate("deleteTask", { id: taskId });
+  }
+
+  /** 一度入れたタスクを直す。題も時間も期限も分類も、ここで変えられる。 */
+  function saveTaskEdits() {
+    var id = state.detailTaskId;
+    if (!id) return;
+    var minutes = Number($("tEstimate").value);
+    var patch = {
+      title: $("tTitle").value.trim(),
+      due: $("tDue").value || "",
+      priority: Number($("tPriority").value) || 3,
+      category: $("tCategory").value
+    };
+    if (minutes > 0) {
+      patch.remainMin = minutes;
+      var current = state.detailTask || {};
+      // 残りを増やしたら見積も追いつかせる（残り > 見積 の矛盾を作らない）
+      if (!current.estimateMin || minutes > current.estimateMin) patch.estimateMin = minutes;
+    }
+    if (!patch.title) { $("detailMsg").textContent = "題を入れてください。"; return; }
+
+    $("actSaveTask").disabled = true;
+    mutate("updateTask", { id: id, patch: patch })
+      .then(function () { $("actSaveTask").disabled = false; })
+      .catch(function () { $("actSaveTask").disabled = false; });
   }
 
   /* ---------- 設定 ---------- */
@@ -2237,6 +2615,12 @@ if (typeof module !== "undefined" && module.exports) {
     box.appendChild(regen);
 
     if (!window.DP_NEEDS_CONNECTION) box.appendChild(codeSection());
+
+    var version = document.createElement("div");
+    version.className = "parsed";
+    version.textContent = "画面の版 " + (window.DP_BUILD || "不明") +
+      " / 解析 " + (typeof parseFixed === "function" ? "読み込みずみ" : "未読み込み");
+    box.appendChild(version);
   }
 
   /** GAS 側の画面でだけ出す。iPhone に入れる PWA へ渡す接続コード。 */
@@ -2417,6 +2801,8 @@ if (typeof module !== "undefined" && module.exports) {
     $("actDone").addEventListener("click", function () { completeTask(state.detailTaskId); });
     $("actDefer").addEventListener("click", function () { deferTask(state.detailTaskId); });
     $("actDelete").addEventListener("click", function () { deleteTask(state.detailTaskId); });
+    $("actSaveTask").addEventListener("click", saveTaskEdits);
+    $("detailSave").addEventListener("click", saveDetail);
 
     $("scroll").addEventListener("scroll", function () { closeSwipes(); }, { passive: true });
 
