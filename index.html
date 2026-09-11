@@ -1457,8 +1457,19 @@ function escapeHtml(s) {
   });
 }
 
-if (IS_PWA_BUILD && 'serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch(function () {});
+// 以前このオリジンに別版(sw.jsでキャッシュする本番寄り版)が入っていたことがあり、
+// 端末にそのService Workerが生き残っていると、こちらの新しい内容に更新しても
+// 古いキャッシュされた画面が出続けることがある。このデモ版はService Workerを
+// 使わないので、見つけたら即座に解除してキャッシュも捨てる。
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(function (regs) {
+    regs.forEach(function (r) { r.unregister(); });
+  }).catch(function () {});
+}
+if (window.caches && caches.keys) {
+  caches.keys().then(function (keys) {
+    keys.forEach(function (k) { caches.delete(k); });
+  }).catch(function () {});
 }
 
 refreshAll().catch(function (err) { showToast('読み込みに失敗しました: ' + (err.message || err)); });
