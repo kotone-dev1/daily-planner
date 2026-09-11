@@ -1,2830 +1,1467 @@
-<!--
-  画面の正。ここだけを編集する。
-  build/build.mjs が @if:gas / @if:web / @inject:core を畳んで
-  dist/gas/index.html と dist/web/index.html を生成する。
--->
-<meta charset="utf-8">
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <title>Daily Planner</title>
-
-<link rel="manifest" href="./manifest.webmanifest">
-
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Daily Planner">
 <style>
-  /* 黒だけで作る。明るいテーマは持たない（本人の指定）。
-     端末が明るい設定でも黒のまま出るよう、色は必ずここのトークンから取る。 */
   :root {
-    color-scheme: dark;
-    --bg: #000000;
-    --row: #131315;
-    --row-2: #1C1C1E;
-    --sep: #2C2C2E;
-    --text: #FFFFFF;
-    --text-2: #98989F;
-    --text-3: #5E5E63;
-    --accent: #FF9F0A;
-    --accent-dim: rgba(255, 159, 10, .18);
-    --danger: #FF453A;
-    --cat-1: #0A84FF;
-    --cat-2: #30D158;
-    --cat-3: #BF5AF2;
-    --radius: 10px;
+    --bg-0: #000000;
+    --bg-1: #111113;
+    --bg-2: #1c1c1f;
+    --text-1: #f2f2f4;
+    --text-2: #98989f;
+    --hairline: #2c2c30;
+    --accent-warn: #ff453a;
+    --e1: var(--bg-1);
+    --e2: var(--bg-2);
+    --e3: #26262a;
+    --tap-min: 44px;
+    --shadow-raised: 0 1px 0 rgba(255,255,255,0.05) inset, 0 2px 5px rgba(0,0,0,0.5);
+    --shadow-pressed: 0 1px 2px rgba(0,0,0,0.4) inset;
   }
-
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { height: 100%; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, "Hiragino Kaku Gothic ProN", "Hiragino Sans", sans-serif;
-    font-size: 17px;
-    line-height: 1.5;
+  :root[data-theme="light"] {
+    --bg-0: #ffffff;
+    --bg-1: #f5f5f7;
+    --bg-2: #ebebee;
+    --text-1: #1c1c1e;
+    --text-2: #6b6b70;
+    --hairline: #d9d9dd;
+    --accent-warn: #d70015;
+    --e1: var(--bg-1);
+    --e2: var(--bg-2);
+    --e3: #e1e1e5;
+    --shadow-raised: 0 1px 0 rgba(255,255,255,0.6) inset, 0 1px 3px rgba(0,0,0,0.15), 0 2px 6px rgba(0,0,0,0.08);
+    --shadow-pressed: 0 1px 2px rgba(0,0,0,0.12) inset;
+  }
+  /* 既定は黒ベース(iPhone時計アプリ相当)。ライトは data-theme="light" を
+     明示したときだけ。システムのライト/ダーク設定には追従しない。 */
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg-0); color: var(--text-1);
+    font-family: -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif;
+    font-weight: 400;
     -webkit-font-smoothing: antialiased;
-    -webkit-text-size-adjust: 100%;
   }
-  button, input, select { font: inherit; color: inherit; }
-  button { cursor: pointer; background: none; border: none; padding: 0; }
-  .num { font-variant-numeric: tabular-nums; }
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #app {
+    display: flex; flex-direction: column; height: 100dvh; overflow: hidden;
+  }
+  main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .tab-panel { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: 24px; }
+  .tab-panel[hidden] { display: none; }
 
-  /* ---------- 骨組み ---------- */
-  .app { display: flex; flex-direction: column; min-height: 100%; }
-  .scroll {
-    flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    padding-bottom: calc(120px + env(safe-area-inset-bottom));
+  /* --- 警告バナー --- */
+  #warningBanner {
+    background: var(--bg-1);
+    border-bottom: 1px solid var(--hairline);
+    padding: 12px 16px;
   }
-  .view[hidden] { display: none; }
+  #warningBanner[hidden] { display: none; }
+  #warningSummary {
+    display: flex; align-items: center; justify-content: space-between;
+    color: var(--accent-warn); font-weight: 600; font-size: 15px;
+    min-height: var(--tap-min); cursor: pointer;
+  }
+  #warningList { margin-top: 8px; display: none; }
+  #warningBanner.expanded #warningList { display: block; }
+  #warningBanner.expanded #warningChevron { transform: rotate(180deg); }
+  .warning-row { padding: 8px 0; font-size: 14px; color: var(--text-1); border-top: 1px solid var(--hairline); }
+  .warning-row .state { color: var(--text-2); font-size: 12px; }
 
-  .head {
-    padding: calc(8px + env(safe-area-inset-top)) 16px 8px;
-    display: flex; align-items: flex-end; gap: 12px;
+  /* --- 今日: 今日に配置されたタスクをカード状に(境目をはっきりさせる) --- */
+  .schedule-list { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 4px; }
+  .schedule-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px; min-height: var(--tap-min);
+    border-radius: 12px; background: var(--e1);
+    box-shadow: var(--shadow-raised); touch-action: pan-y;
+    transition: transform .15s cubic-bezier(.34,1.56,.64,1);
   }
-  .head h1 { margin: 0; font-size: 34px; font-weight: 600; letter-spacing: -.02em; }
-  .head .sub { margin-left: auto; font-size: 15px; color: var(--text-2); padding-bottom: 6px; }
-  .head h1 { font-size: 30px; }
-  .daytag {
-    font-size: 13px; color: #000; background: var(--accent);
-    border-radius: 5px; padding: 1px 7px; margin-bottom: 8px;
+  .schedule-row.dragging {
+    box-shadow: var(--shadow-raised), 0 8px 20px rgba(0,0,0,0.35);
+    transform: scale(1.02); position: relative; z-index: 5;
   }
-  .daytag:empty { display: none; }
-  .planbtn {
-    display: block; width: calc(100% - 32px); margin: 4px 16px 8px;
-    min-height: 44px; border-radius: var(--radius);
-    background: var(--row); color: var(--accent); font-size: 15px; font-weight: 600;
-  }
-  .backrow { padding: calc(6px + env(safe-area-inset-top)) 12px 0; }
-  .backrow button {
-    display: inline-flex; align-items: center; gap: 4px;
-    min-height: 44px; padding: 0 4px; color: var(--accent); font-size: 17px;
-  }
+  .weight-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .weight-dot.light { background: #C9BFE0; }
+  .weight-dot.medium { background: #9B7FDB; }
+  .weight-dot.heavy { background: #6A3FD6; }
+  .row-cat-bar { width: 3px; align-self: stretch; border-radius: 2px; flex-shrink: 0; }
+  .row-title { flex: 1; font-size: 15px; }
+  .row-title .sub { color: var(--text-2); font-size: 12px; margin-top: 2px; }
+  .mini-stage-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .mini-stage { display: flex; gap: 5px; }
+  .mini-stage span { width: 7px; height: 7px; border-radius: 50%; background: var(--hairline); flex-shrink: 0; }
+  .mini-stage span.filled { background: #9B7FDB; }
+  .mini-stage-label { color: var(--text-2); font-size: 12px; }
+  .empty-state { padding: 40px 16px; color: var(--text-2); font-size: 14px; text-align: center; }
 
-  .progress {
-    height: 2px; background: var(--accent); width: 0;
-    transition: width .4s ease; opacity: 0;
-  }
-  .progress.on { width: 70%; opacity: 1; }
-
-  /* ---------- グループ ---------- */
-  .group-title {
-    padding: 22px 20px 6px; font-size: 13px; color: var(--text-2);
-    letter-spacing: .01em;
-  }
-  .group {
-    margin: 0 16px; background: var(--row);
-    border-radius: var(--radius); overflow: hidden;
-  }
-  .group + .group { margin-top: 12px; }
-
-  .cell {
-    position: relative; display: block; width: 100%;
-    background: var(--row); text-align: left;
-    min-height: 48px;
-  }
-  .cell + .cell .inner::before {
-    content: ""; position: absolute; left: 16px; right: 0; top: 0;
-    height: 1px; background: var(--sep);
-  }
-  .inner {
-    position: relative; display: grid; align-items: center; gap: 12px;
-    grid-template-columns: 52px minmax(0, 1fr) auto;
-    padding: 10px 14px 10px 16px; min-height: 48px;
-    background: var(--row);
-    transition: transform .22s cubic-bezier(.32, .72, 0, 1);
-  }
-  .inner.plain { grid-template-columns: minmax(0, 1fr) auto; }
-  .cell .time { font-size: 15px; color: var(--text-2); font-variant-numeric: tabular-nums; }
-  .cell .title { font-size: 17px; overflow-wrap: anywhere; }
-  .cell .meta { font-size: 13px; color: var(--text-2); }
-  .cell .right { display: flex; align-items: center; gap: 8px; color: var(--text-3); font-size: 15px; }
-  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--cat, var(--text-3)); }
-
-  .cell.event .inner { background: var(--row-2); }
-  .cell.event .title { color: var(--text-2); }
-  .cell.past .inner { opacity: .45; }
-  /* 期限のないものは、締切ぶんと同じ濃さで出さない。
-     全部が同じ見た目だと「今日やらないとまずいもの」が埋もれる。 */
-  .cell.loose .title { color: var(--text-2); }
-  .cell.loose .dot { opacity: .5; }
-  .cell.running .title { color: var(--accent); }
-
-  /* いまの時刻 */
-  .nowline {
-    display: grid; grid-template-columns: 52px minmax(0, 1fr);
-    gap: 12px; align-items: center; padding: 0 14px 0 16px;
-    background: var(--row);
-  }
-  .nowline .t { font-size: 15px; color: var(--accent); font-variant-numeric: tabular-nums; }
-  .nowline .l { height: 2px; background: var(--accent); border-radius: 1px; }
-
-  /* ---------- スワイプで削除 ---------- */
-  .cell.swipe { overflow: hidden; }
-  .swipe-actions {
-    position: absolute; top: 0; right: 0; bottom: 0;
-    display: flex; align-items: stretch;
-  }
-  .swipe-actions button {
-    width: 88px; color: #FFFFFF; font-size: 15px; font-weight: 600;
-  }
-  .swipe-actions .done { background: var(--cat-2); }
-  .swipe-actions .del { background: var(--danger); }
-  .cell.open .inner { transform: translateX(-176px); }
-
-  /* ---------- 大きなボタン ---------- */
-  .bigbtn {
-    display: block; width: calc(100% - 32px); margin: 16px;
-    min-height: 50px; border-radius: var(--radius);
-    background: var(--row); color: var(--accent);
-    font-size: 17px; font-weight: 600;
-  }
-  .bigbtn.filled { background: var(--accent); color: #000000; }
-  .bigbtn[disabled] { opacity: .35; }
-
-  .chips { display: flex; gap: 8px; padding: 8px 16px 4px; }
+  /* --- タスクタブ --- */
+  .chip-row { display: flex; gap: 8px; padding: 12px 16px; overflow-x: auto; }
   .chip {
-    min-height: 34px; padding: 6px 14px; border-radius: 17px;
-    background: var(--row); color: var(--text-2); font-size: 15px;
+    padding: 8px 14px; border-radius: 999px; border: 1px solid var(--hairline);
+    font-size: 13px; font-weight: 600; white-space: nowrap; background: var(--bg-1);
+    color: var(--text-1); min-height: var(--tap-min); display: flex; align-items: center;
+    box-shadow: var(--shadow-raised); transition: transform .15s cubic-bezier(.34,1.56,.64,1);
   }
-  .chip[aria-pressed="true"] { background: var(--accent); color: #000000; }
-
-  .empty { padding: 48px 24px; text-align: center; color: var(--text-2); font-size: 15px; }
-  .banner {
-    margin: 8px 16px 0; padding: 10px 14px; border-radius: var(--radius);
-    background: var(--row); color: var(--text-2); font-size: 13px;
+  .chip:active { transform: scale(0.92); }
+  .chip.active { background: var(--text-1); color: var(--bg-0); border-color: var(--text-1); box-shadow: var(--shadow-pressed); }
+  .task-row {
+    display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+    min-height: var(--tap-min); border-bottom: 1px solid var(--hairline);
   }
-  .banner[hidden] { display: none; }
+  .task-row .row-title { display: flex; flex-direction: column; }
+  .task-row .row-title .sub { color: var(--text-2); font-size: 12px; margin-top: 2px; }
+  .task-row .deadline { font-size: 13px; color: var(--text-2); flex-shrink: 0; }
+  .task-row .deadline.overdue { color: var(--accent-warn); font-weight: 600; }
 
-  /* ---------- 警告 ---------- */
-  .alert-cell .inner { grid-template-columns: 22px minmax(0, 1fr) auto; }
-  .alert-cell .title { color: var(--text); }
-  .alert-cell .meta { color: var(--danger); }
-  .alert-icon { color: var(--danger); display: block; }
+  /* --- 設定タブ --- */
+  .settings-section { padding: 20px 16px; border-bottom: 1px solid var(--hairline); }
+  .settings-section h2 {
+    font-size: 13px; font-weight: 600; color: var(--text-2); margin: 0 0 12px;
+  }
+  .field-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; gap: 12px; }
+  .field-row label { font-size: 15px; }
+  .field-row input[type="text"], .field-row input[type="number"], .field-row textarea {
+    background: var(--e2); border: 1px solid var(--hairline); border-radius: 8px;
+    color: var(--text-1); padding: 8px 10px; font-size: 15px; min-height: var(--tap-min);
+  }
+  .field-row input[type="number"] { width: 80px; text-align: right; }
+  textarea#connectionCode { width: 100%; min-height: 72px; font-family: monospace; font-size: 13px; }
+  button.plain {
+    background: none; border: none; color: var(--text-1); font-size: 15px;
+    min-height: var(--tap-min); padding: 0; text-align: left;
+  }
+  button.plain.danger {
+    color: var(--accent-warn); text-align: center; width: 100%;
+    background: var(--e1); border: 1px solid var(--hairline); border-radius: 10px; font-weight: 600;
+    box-shadow: var(--shadow-raised); transition: transform .15s cubic-bezier(.34,1.56,.64,1);
+  }
+  button.plain.danger:active { box-shadow: var(--shadow-pressed); transform: translateY(1px) scale(0.98); }
+  button.primary {
+    background: var(--text-1); color: var(--bg-0); border: none; border-radius: 10px;
+    font-size: 15px; font-weight: 600; min-height: var(--tap-min); padding: 0 16px; width: 100%;
+    box-shadow: var(--shadow-raised); transition: transform .15s cubic-bezier(.34,1.56,.64,1);
+  }
+  button.primary:active {
+    box-shadow: var(--shadow-pressed); transform: translateY(1px) scale(0.97);
+  }
+  button.primary.danger-fill { background: var(--accent-warn); color: #fff; }
+  .category-edit-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+  .category-edit-row input[type="text"] { flex: 1; }
+  .category-edit-row input[type="color"] { width: 32px; height: 32px; border: none; background: none; padding: 0; }
 
-  /* ---------- タブ ---------- */
-  .tabbar {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 4;
-    display: grid; grid-template-columns: repeat(3, 1fr);
-    background: color-mix(in srgb, var(--bg) 88%, transparent);
-    backdrop-filter: saturate(180%) blur(20px);
-    -webkit-backdrop-filter: saturate(180%) blur(20px);
-    border-top: 1px solid var(--sep);
+  /* --- タブバー --- */
+  #tabbar {
+    display: flex; border-top: 1px solid var(--hairline); background: var(--bg-1);
     padding-bottom: env(safe-area-inset-bottom);
   }
-  .tabbar button { min-height: 54px; font-size: 12px; color: var(--text-3); }
-  .tabbar button[aria-current="page"] { color: var(--accent); }
-  .fab {
-    position: fixed; right: 16px; z-index: 5;
-    bottom: calc(70px + env(safe-area-inset-bottom));
-    width: 56px; height: 56px; border-radius: 28px;
-    background: var(--accent); color: #000000;
-    font-size: 30px; font-weight: 400; line-height: 1;
-    box-shadow: 0 6px 20px -6px rgba(0, 0, 0, .7);
+  #tabbar button {
+    flex: 1; background: none; border: none; color: var(--text-2); font-size: 11px;
+    padding: 8px 0 6px; margin: 6px 4px 0; min-height: 52px; font-weight: 400;
+    border-radius: 10px; transition: transform .15s cubic-bezier(.34,1.56,.64,1), background .1s ease, box-shadow .1s ease;
+  }
+  #tabbar button:active { transform: scale(0.9); }
+  #tabbar button.active { color: var(--text-1); font-weight: 600; background: var(--e1); box-shadow: var(--shadow-raised); }
+
+  #fabAdd {
+    position: fixed; right: 20px; bottom: calc(72px + env(safe-area-inset-bottom));
+    width: 56px; height: 56px; border-radius: 28px; border: none;
+    background: var(--text-1); color: var(--bg-0); font-size: 28px; line-height: 1;
+    box-shadow: var(--shadow-raised), 0 4px 12px rgba(0,0,0,0.3);
+    transition: transform .15s cubic-bezier(.34,1.56,.64,1);
+  }
+  #fabAdd:active {
+    box-shadow: var(--shadow-pressed); transform: translateY(1px) scale(0.92);
   }
 
-  /* ---------- シート ---------- */
-  .backdrop { position: fixed; inset: 0; z-index: 10; background: rgba(0, 0, 0, .5); }
-  .backdrop[hidden] { display: none; }
+  /* --- ボトムシート --- */
+  #sheetBackdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 10;
+  }
+  #sheetBackdrop[hidden] { display: none; }
   .sheet {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 11;
-    max-height: 92%; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    background: var(--bg);
-    border-radius: 14px 14px 0 0;
-    padding-bottom: calc(20px + env(safe-area-inset-bottom));
-    animation: rise 260ms cubic-bezier(.32, .72, 0, 1);
+    background: var(--bg-1); border-radius: 16px 16px 0 0;
+    max-height: 86vh; overflow-y: auto;
+    padding: 8px 16px calc(24px + env(safe-area-inset-bottom));
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
   }
   .sheet[hidden] { display: none; }
-  @keyframes rise { from { transform: translateY(100%); } to { transform: translateY(0); } }
-  @media (prefers-reduced-motion: reduce) {
-    .sheet { animation: none; }
-    .inner { transition: none; }
+  .sheet-handle { width: 36px; height: 5px; border-radius: 3px; background: var(--hairline); margin: 8px auto 16px; }
+  .sheet h2 { font-size: 17px; font-weight: 600; margin: 0 0 16px; }
+  .sheet textarea, .sheet input[type="text"] {
+    width: 100%; background: var(--e2); border: 1px solid var(--hairline); border-radius: 10px;
+    color: var(--text-1); font-size: 16px; padding: 12px; min-height: var(--tap-min);
   }
-  .grabber {
-    width: 36px; height: 5px; border-radius: 3px; background: var(--sep);
-    margin: 8px auto 4px;
+  .mic-row { display: flex; align-items: center; gap: 12px; margin: 12px 0; }
+  #micButton {
+    width: 48px; height: 48px; border-radius: 24px; border: 1px solid var(--hairline);
+    background: var(--e2); color: var(--text-1); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: var(--shadow-raised); transition: transform .15s cubic-bezier(.34,1.56,.64,1);
   }
-  .sheet-head {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 6px 16px 10px;
-  }
-  .sheet-head .t { font-size: 17px; font-weight: 600; }
-  .sheet-head button { min-height: 44px; color: var(--accent); font-size: 17px; }
+  #micButton:active { box-shadow: var(--shadow-pressed); transform: translateY(1px) scale(0.93); }
+  #micButton.recording { background: var(--accent-warn); color: #fff; border-color: var(--accent-warn); }
+  .parsed-preview { margin: 16px 0; }
+  .parsed-preview .chip-row { padding: 0; margin-top: 8px; }
+  .field-inline { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+  .field-inline label { font-size: 13px; color: var(--text-2); width: 5em; flex-shrink: 0; }
+  .detail-block { padding: 10px 0; border-bottom: 1px solid var(--hairline); }
+  .detail-block .label { font-size: 12px; color: var(--text-2); }
+  .detail-block .value { font-size: 15px; margin-top: 2px; }
+  #qaAnswer { margin-top: 12px; font-size: 14px; background: var(--e2); border-radius: 10px; padding: 12px; }
+  #qaAnswer[hidden] { display: none; }
+  .sheet-actions { display: flex; gap: 8px; margin-top: 16px; }
+  .sheet-actions button { flex: 1; }
+  .sheet-actions[hidden] { display: none; }
 
-  .catch { padding: 4px 16px 0; }
-  .catch input {
-    width: 100%; background: var(--row); border: none; color: var(--text);
-    border-radius: var(--radius); padding: 14px; min-height: 52px; font-size: 17px;
+  /* --- 編集タスク: 5段階の進捗スライダー --- */
+  .stage-track { position: relative; height: 32px; margin: 24px 4px 0; }
+  .stage-dots {
+    position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+    display: flex; justify-content: space-between; align-items: center; pointer-events: none;
   }
-  .parsed { padding: 8px 20px 0; font-size: 13px; color: var(--text-2); min-height: 20px; }
-  .catch textarea {
-    width: 100%; background: var(--row); border: none; color: var(--text);
-    border-radius: var(--radius); padding: 14px; font-size: 17px;
-    line-height: 1.6; resize: none; font-family: inherit;
+  .stage-dots::before {
+    content: ''; position: absolute; left: 6px; right: 6px; top: 50%;
+    height: 1px; background: var(--hairline); transform: translateY(-50%); z-index: 0;
   }
-  .kind-badge {
-    display: inline-block; text-align: center;
-    font-size: 12px; color: var(--text-2);
-    border: 1px solid var(--sep); border-radius: 5px; padding: 2px 0;
+  .stage-dots span {
+    position: relative; z-index: 1; width: 12px; height: 12px; border-radius: 50%;
+    background: var(--e1); border: 1px solid var(--hairline);
   }
-  .mic {
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    margin: 12px 16px 0; width: calc(100% - 32px);
-    min-height: 50px; border-radius: var(--radius);
-    background: var(--row); color: var(--accent); font-size: 17px;
+  .stage-dots span.filled { background: var(--text-1); border-color: var(--text-1); }
+  #stageSlider {
+    position: absolute; left: -13px; right: -13px; top: 0; width: calc(100% + 26px); height: 32px;
+    margin: 0; -webkit-appearance: none; appearance: none; background: transparent;
   }
-  .mic[data-listening="true"] { background: var(--accent-dim); color: var(--danger); }
-  .msg { padding: 8px 20px 0; font-size: 13px; color: var(--danger); min-height: 18px; }
+  #stageSlider::-webkit-slider-runnable-track { background: transparent; height: 32px; }
+  #stageSlider::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 26px; height: 26px; border-radius: 50%;
+    background: var(--text-1); box-shadow: var(--shadow-raised); margin-top: 3px;
+    border: 3px solid var(--bg-1);
+  }
+  .stage-label { text-align: center; font-size: 14px; font-weight: 600; margin-top: 10px; }
 
-  .field {
-    display: grid; grid-template-columns: 72px minmax(0, 1fr);
-    gap: 12px; align-items: center; padding: 0 16px;
-    min-height: 52px; background: var(--row);
+  button.secondary {
+    background: var(--e2); color: var(--text-1); border: 1px solid var(--hairline);
+    border-radius: 10px; font-size: 15px; min-height: var(--tap-min);
+    box-shadow: var(--shadow-raised); transition: transform .15s cubic-bezier(.34,1.56,.64,1);
   }
-  .fields { margin: 12px 16px 0; border-radius: var(--radius); overflow: hidden; }
-  .fields .field + .field { border-top: 1px solid var(--sep); }
-  .field label { font-size: 15px; color: var(--text-2); }
-  .field input, .field select {
-    background: none; border: none; padding: 12px 0; min-height: 48px;
-    width: 100%; text-align: right; font-size: 17px;
+  button.secondary:active { box-shadow: var(--shadow-pressed); transform: translateY(1px) scale(0.97); }
+  .toast {
+    position: fixed; left: 50%; bottom: 100px; transform: translateX(-50%);
+    background: var(--e3); color: var(--text-1); padding: 10px 16px; border-radius: 10px;
+    font-size: 13px; z-index: 20; max-width: 80vw; text-align: center;
   }
-  .field select { text-align-last: right; }
-
-  .detail-facts { margin: 12px 16px 0; border-radius: var(--radius); overflow: hidden; background: var(--row); }
-  .fact { padding: 10px 16px; }
-  .fact + .fact { border-top: 1px solid var(--sep); }
-  .fact dt { font-size: 13px; color: var(--text-2); }
-  .fact dd { margin: 2px 0 0; font-size: 17px; overflow-wrap: anywhere; }
-  .actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 16px; }
-  .actions button {
-    min-height: 50px; border-radius: var(--radius);
-    background: var(--row); color: var(--accent); font-size: 17px; font-weight: 600;
-  }
-  .actions button.filled { background: var(--accent); color: #000000; }
-  .actions button.danger { color: var(--danger); }
+  #confirmSheet { z-index: 12; }
+  #confirmMessage { font-size: 15px; line-height: 1.6; margin: 4px 0 20px; }
 </style>
-
-<div class="app">
-  <div class="progress" id="progress"></div>
-
-  <div class="scroll" id="scroll">
-    <!-- 今日 / ある1日 -->
-    <section class="view" id="viewDay">
-      <div class="backrow" id="backRow" hidden>
-        <button type="button" id="backBtn">‹ これから</button>
-      </div>
-      <div class="head">
-        <h1 id="dayTitle">今日</h1>
-        <span class="daytag" id="daySub"></span>
-        <span class="sub num" id="dayTotals"></span>
-      </div>
-      <button class="planbtn" id="planDayBtn" type="button">今日の予定を言う</button>
-      <div class="banner" id="staleBar" hidden>更新できていません</div>
-      <div id="alertsBox"></div>
-      <div id="dayBody"></div>
-    </section>
-
-    <!-- これから -->
-    <section class="view" id="viewNext" hidden>
-      <div class="head"><h1>これから</h1></div>
-      <div id="nextBody"></div>
-    </section>
-
-    <!-- 設定 -->
-    <section class="view" id="viewSettings" hidden>
-      <div class="head"><h1>設定</h1></div>
-      <div id="settingsBody"></div>
-    </section>
+</head>
+<body>
+<div id="app">
+  <div id="warningBanner" hidden>
+    <div id="warningSummary">
+      <span id="warningText"></span>
+      <span id="warningChevron">▾</span>
+    </div>
+    <div id="warningList"></div>
   </div>
+
+  <main>
+    <section id="tab-today" class="tab-panel">
+      <div id="scheduleList" class="schedule-list"></div>
+    </section>
+
+    <section id="tab-tasks" class="tab-panel" hidden>
+      <div id="categoryChips" class="chip-row"></div>
+      <div id="taskList"></div>
+    </section>
+
+    <section id="tab-settings" class="tab-panel" hidden>
+      <div class="settings-section">
+        <h2>ブロック</h2>
+        <div class="field-row"><label>最短(分)</label><input type="number" id="setMinBlock"></div>
+        <div class="field-row"><label>最長(分)</label><input type="number" id="setMaxBlock"></div>
+        <div class="field-row"><label>休憩(分)</label><input type="number" id="setBreakMin"></div>
+        <div class="field-row"><label>予定前後のバッファ(分)</label><input type="number" id="setBufferMin"></div>
+        <div class="field-row"><label>何日先まで置くか</label><input type="number" id="setLookahead"></div>
+      </div>
+      <div class="settings-section">
+        <h2>カレンダー</h2>
+        <div class="field-row"><label>読むカレンダーID(カンマ区切り)</label></div>
+        <input type="text" id="setReadCalendars" placeholder="calendar-id-1,calendar-id-2">
+        <div class="field-row" style="margin-top:12px;"><label>書き込み先カレンダーID</label></div>
+        <input type="text" id="setWriteCalendar" placeholder="calendar-id">
+        <div class="field-row" style="margin-top:12px;"><label>無視するカレンダーID</label></div>
+        <input type="text" id="setIgnoredCalendars">
+        <div class="field-row" style="margin-top:12px;"><label>無視する予定名(部分一致)</label></div>
+        <input type="text" id="setIgnoredTitles" placeholder="仮,未定">
+      </div>
+      <div class="settings-section">
+        <h2>分類</h2>
+        <div id="categoryEditList"></div>
+      </div>
+      <div class="settings-section">
+        <button class="primary" id="saveSettingsBtn">設定を保存</button>
+      </div>
+      <div class="settings-section" id="connectionSection" hidden>
+        <h2>接続</h2>
+        <textarea id="connectionCode" placeholder="接続コードを貼り付け"></textarea>
+        <div class="sheet-actions">
+          <button class="secondary" id="connectBtn">接続</button>
+        </div>
+        <div id="connectionStatus" style="margin-top:8px; font-size:13px; color: var(--text-2);"></div>
+      </div>
+    </section>
+  </main>
+
+  <button id="fabAdd" aria-label="タスクを追加">+</button>
+
+  <nav id="tabbar">
+    <button data-tab="today" class="active">今日</button>
+    <button data-tab="tasks">タスク</button>
+    <button data-tab="settings">設定</button>
+  </nav>
 </div>
 
-<button class="fab" id="fab" type="button" aria-label="タスクを追加">+</button>
+<div id="sheetBackdrop" hidden></div>
 
-<nav class="tabbar">
-  <button type="button" data-tab="day" aria-current="page">今日</button>
-  <button type="button" data-tab="next">これから</button>
-  <button type="button" data-tab="settings">設定</button>
-</nav>
-
-<!-- 追加：まとめて喋って、勝手に仕分ける -->
-<div class="backdrop" id="addBackdrop" hidden></div>
-<div class="sheet" id="addSheet" hidden role="dialog" aria-label="追加">
-  <div class="grabber"></div>
-  <div class="sheet-head">
-    <span class="t" id="addStageTitle">追加</span>
-    <button type="button" id="addCancel">キャンセル</button>
-  </div>
-
-  <!-- 第1段: 喋る / 書く -->
-  <div id="stageSpeak">
-    <div class="catch">
-      <textarea id="catchInput" rows="4" placeholder="溜まってるものを続けて言ってください&#10;例）今日中に、カット90分、テロップ60分。あと毎日アポ5件"></textarea>
-    </div>
-    <button class="mic" type="button" id="micBtn" data-listening="false">
-      <svg width="17" height="17" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5">
-        <rect x="5.75" y="1.75" width="4.5" height="8" rx="2.25"></rect>
-        <path d="M3.25 7.5a4.75 4.75 0 0 0 9.5 0M8 12.25v2"></path>
+<div id="addSheet" class="sheet" hidden>
+  <div class="sheet-handle"></div>
+  <h2>追加</h2>
+  <textarea id="addText" rows="2" placeholder="資料作成 40分 金曜まで"></textarea>
+  <div class="mic-row">
+    <button id="micButton" aria-label="話して追加">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="9" y="2" width="6" height="12" rx="3" fill="currentColor"/>
+        <path d="M5 11a7 7 0 0 0 14 0" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <path d="M12 18v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
       </svg>
-      <span id="micLabel">話して追加</span>
     </button>
-    <div class="msg" id="addMsg"></div>
-    <button class="bigbtn filled" id="toReview" type="button" disabled>仕分ける</button>
+    <span id="micStatus" style="font-size:13px; color: var(--text-2);">話して追加</span>
   </div>
-
-  <!-- 第2段: 仕分けた結果を確認 -->
-  <div id="stageReview" hidden>
-    <div class="parsed" id="reviewSummary"></div>
-    <div id="reviewList"></div>
-    <div class="msg" id="reviewMsg"></div>
-    <button class="bigbtn filled" id="saveAll" type="button">まとめて保存</button>
-    <button class="bigbtn" id="backToSpeak" type="button">言い直す</button>
+  <div class="parsed-preview">
+    <div class="field-inline"><label>期限</label><input type="text" id="pvDeadline" placeholder="YYYY-MM-DD"></div>
+    <div class="field-inline"><label>重さ</label></div>
+    <div id="weightChips" class="chip-row"></div>
+    <div class="field-inline" style="margin-top:8px;"><label>優先度</label></div>
+    <div id="priorityChips" class="chip-row"></div>
+    <div class="field-inline" style="margin-top:8px;"><label>分類</label></div>
+    <div id="addCategoryChips" class="chip-row"></div>
+    <div class="field-inline" style="margin-top:8px;"><label>種別</label></div>
+    <div id="kindChips" class="chip-row"></div>
+  </div>
+  <div class="sheet-actions">
+    <button class="secondary" id="cancelAddBtn">閉じる</button>
+    <button class="primary" id="saveAddBtn">登録</button>
   </div>
 </div>
 
-<!-- 1件を直す -->
-<div class="backdrop" id="editBackdrop" hidden></div>
-<div class="sheet" id="editSheet" hidden role="dialog" aria-label="項目を直す">
-  <div class="grabber"></div>
-  <div class="sheet-head">
-    <span class="t">直す</span>
-    <button type="button" id="editClose">閉じる</button>
+<div id="detailSheet" class="sheet" hidden>
+  <div class="sheet-handle"></div>
+  <h2 id="detailTitle"></h2>
+  <div class="detail-block"><div class="label">これは何か</div><div class="value" id="detailBody"></div></div>
+  <div class="detail-block"><div class="label">いつ振られたか</div><div class="value" id="detailReceived"></div></div>
+  <div class="detail-block"><div class="label">見積・残り・期限</div><div class="value" id="detailNumbers"></div></div>
+  <div class="detail-block"><div class="label">出典</div><div class="value" id="detailSource"></div></div>
+  <div class="sheet-actions" id="bringBackRow" hidden>
+    <button class="secondary" id="bringBackBtn">今日に戻す</button>
   </div>
-  <div class="catch">
-    <input type="text" id="eTitle" autocomplete="off">
+  <div class="sheet-actions" id="simpleActions">
+    <button class="secondary" id="startTaskBtn">開始</button>
+    <button class="secondary" id="deferTaskBtn">延期</button>
+    <button class="primary" id="completeTaskBtn">完了</button>
   </div>
-  <div class="fields">
-    <div class="field">
-      <label for="eKind">形</label>
-      <select id="eKind">
-        <option value="task">1回だけ</option>
-        <option value="goal">目標</option>
-        <option value="routine">日課</option>
-      </select>
+  <div id="editActions" hidden>
+    <div class="stage-track">
+      <div class="stage-dots" id="stageDots"></div>
+      <input type="range" id="stageSlider" min="0" max="4" step="1">
     </div>
-    <div class="field">
-      <label for="eEstimate">見積</label>
-      <input type="number" id="eEstimate" min="5" step="5" inputmode="numeric" placeholder="分">
-    </div>
-    <div class="field">
-      <label for="eDue">期限</label>
-      <input type="date" id="eDue">
-    </div>
-    <div class="field">
-      <label for="ePriority">優先</label>
-      <select id="ePriority">
-        <option value="1">最優先</option>
-        <option value="2">急ぎ</option>
-        <option value="3">通常</option>
-        <option value="4">いつでも</option>
-      </select>
-    </div>
-    <div class="field">
-      <label for="eCategory">分類</label>
-      <select id="eCategory"></select>
-    </div>
-    <div class="field" id="eQuantityRow" hidden>
-      <label for="eQuantity">目標数</label>
-      <input type="number" id="eQuantity" min="1" inputmode="numeric">
-    </div>
-    <div class="field" id="eCurrentRow" hidden>
-      <label for="eCurrent">現在</label>
-      <input type="number" id="eCurrent" min="0" inputmode="numeric">
-    </div>
-    <div class="field" id="ePerItemRow" hidden>
-      <label for="ePerItem">1件</label>
-      <input type="number" id="ePerItem" min="1" step="5" inputmode="numeric" placeholder="分">
+    <div class="stage-label" id="stageLabel"></div>
+    <div class="sheet-actions">
+      <button class="secondary" id="deferEditBtn">延期</button>
+      <button class="primary" id="finishEditBtn">終了</button>
     </div>
   </div>
-  <button class="bigbtn filled" id="editApply" type="button">これでいい</button>
+  <div style="margin-top:16px;">
+    <input type="text" id="qaInput" placeholder="これについて質問する">
+    <div class="sheet-actions">
+      <button class="secondary" id="qaAskBtn">聞く</button>
+    </div>
+    <div id="qaAnswer" hidden></div>
+  </div>
+  <button class="plain danger" id="deleteTaskBtn" style="margin-top:20px;">タスクを削除</button>
 </div>
 
-
-<!-- 今日を組む：先に埋まっている予定を喋る -->
-<div class="backdrop" id="planBackdrop" hidden></div>
-<div class="sheet" id="planSheet" hidden role="dialog" aria-label="今日の予定">
-  <div class="grabber"></div>
-  <div class="sheet-head">
-    <span class="t" id="planTitle">今日の予定</span>
-    <button type="button" id="planCancel">閉じる</button>
+<div id="confirmSheet" class="sheet" hidden>
+  <div class="sheet-handle"></div>
+  <p id="confirmMessage"></p>
+  <div class="sheet-actions">
+    <button class="secondary" id="confirmCancelBtn">キャンセル</button>
+    <button class="primary danger-fill" id="confirmOkBtn">削除する</button>
   </div>
-  <div class="parsed" id="planAsk">すでに埋まっている時間を言ってください。残りにタスクを入れます。</div>
-  <div class="catch">
-    <textarea id="planInput" rows="3" placeholder="例）バイト10時から17時、そのあと会議18時から19時"></textarea>
-  </div>
-  <button class="mic" type="button" id="planMic" data-listening="false">
-    <svg width="17" height="17" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5">
-      <rect x="5.75" y="1.75" width="4.5" height="8" rx="2.25"></rect>
-      <path d="M3.25 7.5a4.75 4.75 0 0 0 9.5 0M8 12.25v2"></path>
-    </svg>
-    <span id="planMicLabel">話す</span>
-  </button>
-  <div class="msg" id="planMsg"></div>
-  <div id="planPreview"></div>
-  <button class="bigbtn filled" id="planApply" type="button" disabled>これで組む</button>
 </div>
 
-<!-- 詳細 -->
-<div class="backdrop" id="detailBackdrop" hidden></div>
-<div class="sheet" id="detailSheet" hidden role="dialog" aria-label="タスクの詳細">
-  <div class="grabber"></div>
-  <div class="sheet-head">
-    <span class="t" id="detailTitle"></span>
-    <button type="button" id="detailClose">閉じる</button>
-  </div>
-  <div class="parsed" id="detailSub"></div>
-  <div class="msg" id="detailWarn"></div>
-  <div class="detail-facts" id="detailFacts"></div>
-  <div class="actions">
-    <button type="button" class="filled" id="actStart">開始</button>
-    <button type="button" id="actDone">完了</button>
-    <button type="button" id="actDefer">延期</button>
-  </div>
-  <div class="fields" id="taskEditFields">
-    <div class="field">
-      <label for="tTitle">題</label>
-      <input type="text" id="tTitle" autocomplete="off" style="text-align:left">
-    </div>
-    <div class="field">
-      <label for="tEstimate">残り</label>
-      <input type="number" id="tEstimate" min="5" step="5" inputmode="numeric" placeholder="分">
-    </div>
-    <div class="field">
-      <label for="tDue">期限</label>
-      <input type="date" id="tDue">
-    </div>
-    <div class="field">
-      <label for="tPriority">優先</label>
-      <select id="tPriority">
-        <option value="1">最優先</option>
-        <option value="2">急ぎ</option>
-        <option value="3">通常</option>
-        <option value="4">いつでも</option>
-      </select>
-    </div>
-    <div class="field">
-      <label for="tCategory">分類</label>
-      <select id="tCategory"></select>
-    </div>
-  </div>
-  <button class="bigbtn filled" id="actSaveTask" type="button">直した内容で保存</button>
-  <div class="fields" id="detailEdit">
-    <div class="field">
-      <label for="dTitle">題</label>
-      <input type="text" id="dTitle" autocomplete="off" style="text-align:left">
-    </div>
-    <div class="field">
-      <label for="dEstimate">残り</label>
-      <input type="number" id="dEstimate" min="5" step="5" inputmode="numeric" placeholder="分">
-    </div>
-    <div class="field">
-      <label for="dDue">期限</label>
-      <input type="date" id="dDue">
-    </div>
-    <div class="field">
-      <label for="dPriority">優先</label>
-      <select id="dPriority">
-        <option value="1">最優先</option>
-        <option value="2">急ぎ</option>
-        <option value="3">通常</option>
-        <option value="4">いつでも</option>
-      </select>
-    </div>
-    <div class="field">
-      <label for="dCategory">分類</label>
-      <select id="dCategory"></select>
-    </div>
-  </div>
-  <button class="bigbtn" id="detailSave" type="button">直したことを保存</button>
-  <button class="bigbtn" id="actDelete" type="button" style="color: var(--danger)">削除</button>
-  <div class="msg" id="detailMsg"></div>
-</div>
-
-<script>window.DP_BUILD="20260910174107";</script>
 <script>
-/**
- * 一言テキストを タイトル / 見積分 / 期限 / 優先度 に分解し、
- * さらに**どの形の仕事か**（1回型 / 目標 / 日課 / 案件）を見分ける。
- *
- * 外部依存なし・現在時刻は引数で受け取る（GAS と Node のテストで同じファイルを使う）。
- * 分類の語や工程の型は、設定や履歴から呼び出し側が options で渡す。
- * ここに埋め込むと、語が増えるたびに解析器を書き換えることになるため。
- */
-"use strict";
+'use strict';
 
-var DP_PARSER = (function () {
-  var HALF_DAY_MIN = 240;
-  var DEFAULT_PRIORITY = 3;
-  var WEEKDAYS = { 日: 0, 月: 1, 火: 2, 水: 3, 木: 4, 金: 5, 土: 6 };
+// ===DEMO:LOCAL-START===
+// バックエンド(スプレッドシート/Apps Script)を繋がずに触れる体験版。
+// core/parser.js と core/scheduler.js は本番と同じロジックをそのまま使い、
+// データの保存先だけをスプレッドシートからブラウザのlocalStorageに差し替えている。
 
-  var KANJI_DIGITS = { 〇: 0, 零: 0, 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+const WEEKDAY_JS = { 日: 0, 月: 1, 火: 2, 水: 3, 木: 4, 金: 5, 土: 6 };
 
-  /**
-   * 「十時」「二十人」「九十分」のような漢数字を半角に直す。
-   * 音声認識が数字を漢字で返すことがあり、そのままだと解析が丸ごと外れるため。
-   * 扱うのは99までの素直な形だけ（百以上や「四半期」のような語は触らない）。
-   */
-  function kanjiToNumber(text) {
-    return text.replace(/[〇零一二三四五六七八九十]+/g, function (chunk) {
-      if (chunk === "十") return "10";
-      var tens = chunk.indexOf("十");
-      if (tens < 0) {
-        var digits = "";
-        for (var i = 0; i < chunk.length; i++) {
-          if (KANJI_DIGITS[chunk.charAt(i)] === undefined) return chunk;
-          digits += KANJI_DIGITS[chunk.charAt(i)];
-        }
-        return digits;
-      }
-      var head = chunk.slice(0, tens);
-      var tail = chunk.slice(tens + 1);
-      if (head.length > 1 || tail.length > 1) return chunk;
-      var value = (head === "" ? 1 : KANJI_DIGITS[head]) * 10 + (tail === "" ? 0 : KANJI_DIGITS[tail]);
-      return isFinite(value) ? String(value) : chunk;
-    });
+function normalizeDigits(text) {
+  return text.replace(/[０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0));
+}
+function startOfDay(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+function formatDate(d) {
+  const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function mondayOfWeek(d) { const dow = d.getDay(); return addDays(startOfDay(d), -((dow + 6) % 7)); }
+function nearestUpcomingWeekday(now, dowTarget) {
+  let candidate = startOfDay(now);
+  for (let i = 0; i < 7; i++) { if (candidate.getDay() === dowTarget) return candidate; candidate = addDays(candidate, 1); }
+  return candidate;
+}
+const ESTIMATE_PATTERNS = [
+  { re: /(\d+)時間(\d+)分/, toMinutes: (m) => Number(m[1]) * 60 + Number(m[2]) },
+  { re: /(\d+)時間半/, toMinutes: (m) => Number(m[1]) * 60 + 30 },
+  { re: /(\d+)時間/, toMinutes: (m) => Number(m[1]) * 60 },
+  { re: /(\d+)分/, toMinutes: (m) => Number(m[1]) },
+  { re: /半日/, toMinutes: () => 240 },
+];
+function extractEstimate(text) {
+  for (const { re, toMinutes } of ESTIMATE_PATTERNS) { const m = re.exec(text); if (m) return { value: toMinutes(m), match: m[0] }; }
+  return { value: null, match: null };
+}
+function extractDeadline(text, now) {
+  let m;
+  if ((m = /今月末(まで)?/.exec(text))) { const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0); return { value: formatDate(lastDay), match: m[0] }; }
+  if ((m = /(\d+)月(\d+)日(まで)?/.exec(text))) {
+    const month = Number(m[1]) - 1, day = Number(m[2]);
+    let candidate = new Date(now.getFullYear(), month, day);
+    if (candidate < startOfDay(now)) candidate = new Date(now.getFullYear() + 1, month, day);
+    return { value: formatDate(candidate), match: m[0] };
   }
-
-  function normalize(text) {
-    return kanjiToNumber(
-      String(text == null ? "" : text)
-        .replace(/[０-９]/g, function (c) {
-          return String.fromCharCode(c.charCodeAt(0) - 0xfee0);
-        })
-        .replace(/　/g, " ")
-        .replace(/[：]/g, ":")
-    );
+  if ((m = /(\d+)日後/.exec(text))) return { value: formatDate(addDays(startOfDay(now), Number(m[1]))), match: m[0] };
+  if ((m = /来週の?([月火水木金土日])曜(まで)?/.exec(text))) {
+    const monday = mondayOfWeek(now), dowTarget = WEEKDAY_JS[m[1]], offset = (dowTarget + 6) % 7;
+    return { value: formatDate(addDays(monday, 7 + offset)), match: m[0] };
   }
-
-  function ymd(d) {
-    return (
-      d.getFullYear() +
-      "-" +
-      String(d.getMonth() + 1).padStart(2, "0") +
-      "-" +
-      String(d.getDate()).padStart(2, "0")
-    );
+  if ((m = /今週の?([月火水木金土日])曜(まで)?/.exec(text))) {
+    const monday = mondayOfWeek(now), dowTarget = WEEKDAY_JS[m[1]], offset = (dowTarget + 6) % 7;
+    return { value: formatDate(addDays(monday, offset)), match: m[0] };
   }
+  if ((m = /明後日(まで)?/.exec(text))) return { value: formatDate(addDays(startOfDay(now), 2)), match: m[0] };
+  if ((m = /明日(まで)?/.exec(text))) return { value: formatDate(addDays(startOfDay(now), 1)), match: m[0] };
+  if ((m = /今日(まで)?/.exec(text))) return { value: formatDate(startOfDay(now)), match: m[0] };
+  if ((m = /([月火水木金土日])曜(まで)?/.exec(text))) return { value: formatDate(nearestUpcomingWeekday(now, WEEKDAY_JS[m[1]])), match: m[0] };
+  return { value: null, match: null };
+}
+const PRIORITY_WORDS = [ { re: /最優先/, value: 1 }, { re: /急ぎ/, value: 2 }, { re: /いつでも/, value: 4 } ];
+function extractPriority(text) {
+  for (const { re, value } of PRIORITY_WORDS) { const m = re.exec(text); if (m) return { value, match: m[0] }; }
+  return { value: 3, match: null };
+}
+function parseTask(rawText, now = new Date()) {
+  const text = normalizeDigits(rawText);
+  const priority = extractPriority(text), deadline = extractDeadline(text, now), estimate = extractEstimate(text);
+  let title = text;
+  for (const match of [priority.match, deadline.match, estimate.match]) { if (match) title = title.replace(match, ' '); }
+  title = title.replace(/\s+/g, ' ').trim();
+  return { title, estimateMinutes: estimate.value, deadline: deadline.value, priority: priority.value };
+}
 
-  function startOfDay(now) {
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+function schStartOfDay(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function schAddDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+function schFormatDate(d) {
+  const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function parseDateOnly(str) { const [y, m, d] = str.split('-').map(Number); return new Date(y, m - 1, d); }
+function ceilTo5Minutes(date) {
+  const fiveMin = 5 * 60000, rem = date.getTime() % fiveMin;
+  if (rem === 0) return new Date(date.getTime());
+  return new Date(date.getTime() + (fiveMin - rem));
+}
+function mergeIntervals(intervals) {
+  const sorted = [...intervals].sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const cur of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && cur[0] <= last[1]) last[1] = Math.max(last[1], cur[1]);
+    else merged.push([...cur]);
   }
-
-  function shift(base, days) {
-    var d = new Date(base.getFullYear(), base.getMonth(), base.getDate());
-    d.setDate(d.getDate() + days);
-    return d;
-  }
-
-  /** その週の月曜。週は月曜はじまり。 */
-  function mondayOf(base) {
-    return shift(base, -((base.getDay() + 6) % 7));
-  }
-
-  /** 月曜起点の週内オフセット（月=0 … 日=6）。 */
-  function weekOffset(jsDay) {
-    return (jsDay + 6) % 7;
-  }
-
-  /** その月の末日。過ぎていれば翌年に送る。 */
-  function endOfMonth(today, monthIndex) {
-    var d = new Date(today.getFullYear(), monthIndex + 1, 0);
-    if (d < today) d = new Date(today.getFullYear() + 1, monthIndex + 1, 0);
-    return d;
-  }
-
-  // 「金曜まで」「今日中に」「来週までに」——期限の後ろに付く言い回しをまとめて食う。
-  var UNTIL = "(?:(?:まで|中)(?:に)?)?";
-
-  /** 先に当たったものが勝つ。長い表現を先に置くこと。 */
-  var ESTIMATE_RULES = [
-    [/(\d+)\s*時間\s*(\d+)\s*分/, function (m) { return Number(m[1]) * 60 + Number(m[2]); }],
-    [/(\d+)\s*時間半/, function (m) { return Number(m[1]) * 60 + 30; }],
-    [/(\d+)\s*時間/, function (m) { return Number(m[1]) * 60; }],
-    [/半日/, function () { return HALF_DAY_MIN; }],
-    [/(\d+)\s*分/, function (m) { return Number(m[1]); }]
-  ];
-
-  var PRIORITY_RULES = [
-    [/最優先/, 1],
-    [/至急|急ぎ/, 2],
-    [/通常/, 3],
-    [/いつでも/, 4]
-  ];
-
-  function dueRules(today) {
-    return [
-      [new RegExp("今日" + UNTIL), function () { return today; }],
-      [new RegExp("明後日" + UNTIL), function () { return shift(today, 2); }],
-      [new RegExp("明日" + UNTIL), function () { return shift(today, 1); }],
-      [new RegExp("今月末" + UNTIL), function () {
-        return new Date(today.getFullYear(), today.getMonth() + 1, 0);
-      }],
-      [new RegExp("(\\d+)\\s*日後" + UNTIL), function (m) {
-        return shift(today, Number(m[1]));
-      }],
-      [new RegExp("来週の?([月火水木金土日])曜?日?" + UNTIL), function (m) {
-        return shift(mondayOf(today), 7 + weekOffset(WEEKDAYS[m[1]]));
-      }],
-      [new RegExp("今週の?([月火水木金土日])曜?日?" + UNTIL), function (m) {
-        return shift(mondayOf(today), weekOffset(WEEKDAYS[m[1]]));
-      }],
-      // 曜日を言わない「来週まで」は1週間後、「今週中」は今週の日曜。
-      [new RegExp("来週" + UNTIL), function () { return shift(today, 7); }],
-      [new RegExp("今週" + UNTIL), function () { return shift(mondayOf(today), 6); }],
-      // 「10月末」も「11月まで」も、その月の末日として扱う。
-      [new RegExp("(\\d{1,2})\\s*月末" + UNTIL), function (m) {
-        return endOfMonth(today, Number(m[1]) - 1);
-      }],
-      [new RegExp("(\\d{1,2})\\s*月\\s*(?:まで(?:に)?|をめど|目処)"), function (m) {
-        return endOfMonth(today, Number(m[1]) - 1);
-      }],
-      // 「10/10」「10.10」「2027/1/5」。打つときはこの形が多い。
-      [new RegExp("(\\d{4})[/.\\-](\\d{1,2})[/.\\-](\\d{1,2})" + UNTIL), function (m) {
-        return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-      }],
-      [new RegExp("(?:^|[^\\d:])(\\d{1,2})[/.](\\d{1,2})(?![\\d:])" + UNTIL), function (m) {
-        var month = Number(m[1]) - 1;
-        var day = Number(m[2]);
-        var d = new Date(today.getFullYear(), month, day);
-        if (d < today) d = new Date(today.getFullYear() + 1, month, day);
-        return d;
-      }],
-      [new RegExp("(\\d+)\\s*月\\s*(\\d+)\\s*日" + UNTIL), function (m) {
-        var month = Number(m[1]) - 1;
-        var day = Number(m[2]);
-        var d = new Date(today.getFullYear(), month, day);
-        if (d < today) d = new Date(today.getFullYear() + 1, month, day);
-        return d;
-      }],
-      [new RegExp("([月火水木金土日])曜日?" + UNTIL), function (m) {
-        return shift(today, (WEEKDAYS[m[1]] - today.getDay() + 7) % 7);
-      }]
-    ];
-  }
-
-  /** 最初に当たった規則の値を返し、当たった箇所を空白に置き換えた文字列も返す。 */
-  function takeFirst(text, rules) {
-    for (var i = 0; i < rules.length; i++) {
-      var m = text.match(rules[i][0]);
-      if (!m) continue;
-      var value = typeof rules[i][1] === "function" ? rules[i][1](m) : rules[i][1];
-      return { value: value, rest: text.replace(rules[i][0], " ") };
-    }
-    return { value: null, rest: text };
-  }
-
-  // 喋ったときに付く言い回し。題に残ると邪魔なので落とす。
-  var FILLER = /(?:溜ま|たま)(?:って|った)(?:る|いる)?|残って(?:る|いる)?|あるのが|ぶん(?=$|\s)/g;
-
-  function cleanTitle(text) {
-    var t = String(text)
-      .replace(FILLER, " ")
-      .replace(/(?:が|は|を|の|で)\s*$/, " ")
-      .replace(/\s+/g, " ")
-      .replace(/^[\s、。・,.\-–—:：]+/, "")
-      .replace(/[\s、。・,.\-–—:：]+$/, "")
-      .trim();
-    return t === "" ? null : t;
-  }
-
-  /* ---------- 形の見分けに使う語 ---------- */
-
-  // 数えられる単位。ここに無いものは数量として扱わない（「第3章」「本を読む」を守る）。
-  var COUNT_UNITS = "人|件|本|回|冊|記事|動画|杯";
-
-  var WEEKDAY_CHARS = "月火水木金土日";
-
-  /** 「1件90分」「1人あたり90分」のような、1件あたりの見積。 */
-  var PER_ITEM_RULES = [
-    [new RegExp("1\\s*(?:" + COUNT_UNITS + ")\\s*(?:あたり|につき)?\\s*(\\d+)\\s*時間\\s*(\\d+)\\s*分"),
-      function (m) { return Number(m[1]) * 60 + Number(m[2]); }],
-    [new RegExp("1\\s*(?:" + COUNT_UNITS + ")\\s*(?:あたり|につき)?\\s*(\\d+)\\s*時間半"),
-      function (m) { return Number(m[1]) * 60 + 30; }],
-    [new RegExp("1\\s*(?:" + COUNT_UNITS + ")\\s*(?:あたり|につき)?\\s*(\\d+)\\s*時間"),
-      function (m) { return Number(m[1]) * 60; }],
-    [new RegExp("1\\s*(?:" + COUNT_UNITS + ")\\s*(?:あたり|につき)?\\s*(\\d+)\\s*分"),
-      function (m) { return Number(m[1]); }]
-  ];
-
-  /** 「現在7人」「7人済み」のような、すでに済んでいる数。 */
-  var CURRENT_RULES = [
-    [new RegExp("(?:現在|いま|すでに)\\s*(\\d+)\\s*(?:" + COUNT_UNITS + ")?"), function (m) { return Number(m[1]); }],
-    [new RegExp("(\\d+)\\s*(?:" + COUNT_UNITS + ")\\s*(?:済み|済|完了|終わり)"), function (m) { return Number(m[1]); }]
-  ];
-
-  function cadenceRules() {
-    return [
-      [/平日/, function () { return { per: "day", weekdays: [1, 2, 3, 4, 5] }; }],
-      [new RegExp("毎週\\s*の?\\s*([" + WEEKDAY_CHARS + "]+)\\s*曜?日?"), function (m) {
-        var out = [];
-        for (var i = 0; i < m[1].length; i++) {
-          var index = WEEKDAY_CHARS.indexOf(m[1].charAt(i));
-          var jsDay = index === 6 ? 0 : index + 1; // 月=1 … 土=6 / 日=0
-          if (out.indexOf(jsDay) < 0) out.push(jsDay);
-        }
-        out.sort(function (a, b) { return a - b; });
-        return { per: "day", weekdays: out };
-      }],
-      [/毎日|毎朝|毎晩|毎夜|日課/, function () { return { per: "day", weekdays: [] }; }],
-      // 「週3本」。数量そのものは後段の takeQuantity に残す。
-      [new RegExp("(?:毎週|週)(?=\\s*\\d+\\s*(?:" + COUNT_UNITS + "))"), function () {
-        return { per: "week", weekdays: [] };
-      }],
-      [/毎週/, function () { return { per: "week", weekdays: [] }; }]
-    ];
-  }
-
-  /** 数量と単位。単位の直前に数字があるときだけ拾う。 */
-  function takeQuantity(text) {
-    var re = new RegExp("(\\d+)\\s*(" + COUNT_UNITS + ")");
-    var m = text.match(re);
-    if (!m) return { value: null, unit: null, rest: text };
-    return { value: Number(m[1]), unit: m[2], rest: text.replace(re, " ") };
-  }
-
-  /** 工程の型。呼び出し側が渡した名前だけを見る。 */
-  function takeProjectType(text, types) {
-    if (!types || !types.length) return { value: null, rest: text };
-    var longest = types.slice().sort(function (a, b) { return b.length - a.length; });
-    for (var i = 0; i < longest.length; i++) {
-      var name = String(longest[i]);
-      if (name && text.indexOf(name) >= 0) {
-        return { value: name, rest: text.replace(name, " ") };
-      }
-    }
-    return { value: null, rest: text };
-  }
-
-  /** 分類。呼び出し側が渡した語だけを見る。当たらなければ null。 */
-  function guessCategory(text, hints) {
-    if (!hints) return null;
-    var lower = text.toLowerCase();
-    for (var name in hints) {
-      if (!Object.prototype.hasOwnProperty.call(hints, name)) continue;
-      var words = hints[name] || [];
-      for (var i = 0; i < words.length; i++) {
-        if (words[i] && lower.indexOf(String(words[i]).toLowerCase()) >= 0) return name;
-      }
-    }
-    return null;
-  }
-
-  /* ---------- 言葉から所要時間を決める（人に聞かない） ---------- */
-
-  var FALLBACK_ESTIMATE = 30;
-
-  /** 「工程名=分」をカンマで並べた表を読む。設定から渡される。 */
-  function parseEstimateTable(spec) {
-    var table = [];
-    String(spec || "").split(/[,、|]/).forEach(function (pair) {
-      var kv = pair.split("=");
-      if (kv.length !== 2) return;
-      var word = kv[0].trim();
-      var minutes = Number(kv[1]);
-      if (word && isFinite(minutes) && minutes > 0) table.push([word, minutes]);
-    });
-    // 長い語を先に当てる（「素材取り込み」が「素材」に食われないように）
-    table.sort(function (a, b) { return b[0].length - a[0].length; });
-    return table;
-  }
-
-  /**
-   * 題から所要時間を決める。分からなければ 30分。
-   * 見積を尋ねる画面を出さないためにあり、外れても実績で直る前提で置いている。
-   */
-  function estimateBase(text, options) {
-    var opts = options || {};
-    var table = opts.estimateTable || parseEstimateTable(opts.taskEstimates);
-    var body = String(text || "");
-
-    for (var i = 0; i < table.length; i++) {
-      if (body.indexOf(table[i][0]) >= 0) return { base: table[i][1], matched: true };
-    }
-    // 直前の話題を引き継ぐ。「編集が10人分。4が半分」の「4が半分」に
-    // 編集の時間を当てるため。無ければ 30分。
-    var carried = Number(opts.carryBase);
-    return { base: isFinite(carried) && carried > 0 ? carried : FALLBACK_ESTIMATE, matched: false };
-  }
-
-  function estimateFor(text, options) {
-    var body = String(text || "");
-    var found = estimateBase(body, options);
-    var ratio = progressRatio(body);
-    return roundTo5(found.base * (ratio == null ? 1 : ratio));
-  }
-
-  /** 「1〜3」「5から10」のような範囲。何本ぶんかを数える。 */
-  var RANGE_RE = /(\d+)\s*(?:〜|~|～|-|から)\s*(\d+)\s*(?:は|が|の)?/;
-
-  /** 「10人分」「3本分」＝ その数だけ溜まっている。 */
-  var STOCK_RE = new RegExp("(\\d+)\\s*(?:" + COUNT_UNITS + ")\\s*分(?![0-9])");
-
-  function takeRange(text) {
-    var stock = text.match(STOCK_RE);
-    if (stock) {
-      var n = Number(stock[1]);
-      if (n > 0) return { count: Math.min(n, 100), rest: text.replace(STOCK_RE, " ") };
-    }
-    var m = text.match(RANGE_RE);
-    if (!m) return { count: null, rest: text };
-    var from = Number(m[1]);
-    var to = Number(m[2]);
-    if (!(to >= from) || to - from > 200) return { count: null, rest: text };
-    return { count: to - from + 1, rest: text.replace(RANGE_RE, " ") };
-  }
-
-  /**
-   * @param {string} text 一言入力
-   * @param {Date} now 現在時刻
-   * @param {{projectTypes?: string[], categoryHints?: Object}} [options]
-   * @returns {{kind: string, title: string|null, estimateMin: number|null, due: string|null,
-   *            priority: number, quantity: number|null, unit: string|null, current: number|null,
-   *            perItemMin: number|null, weekdays: number[]|null, projectType: string|null,
-   *            category: string|null}}
-   */
-  function parse(text, now, options) {
-    var opts = options || {};
-    var today = startOfDay(now instanceof Date ? now : new Date());
-    var original = normalize(text);
-    var rest = original;
-
-    // 1件あたりの見積を先に抜く。素の見積規則に「1件90分」の90分を食わせないため。
-    var range = takeRange(rest);
-    rest = range.rest;
-
-    var perItem = takeFirst(rest, PER_ITEM_RULES);
-    rest = perItem.rest;
-
-    var cadence = takeFirst(rest, cadenceRules());
-    rest = cadence.rest;
-
-    var current = takeFirst(rest, CURRENT_RULES);
-    rest = current.rest;
-
-    var quantity = takeQuantity(rest);
-    rest = quantity.rest;
-
-    var estimate = takeFirst(rest, ESTIMATE_RULES);
-    rest = estimate.rest;
-
-    var priority = takeFirst(rest, PRIORITY_RULES);
-    rest = priority.rest;
-
-    var due = takeFirst(rest, dueRules(today));
-    rest = due.rest;
-
-    var project = takeProjectType(rest, opts.projectTypes);
-    rest = project.rest;
-
-    var estimateMin = estimate.value;
-    var perItemMin = perItem.value;
-    var dueText = due.value ? ymd(due.value) : null;
-
-    var cadenceValue = cadence.value;
-    var kind = "task";
-    var needsDue = false;
-    if (cadenceValue) kind = "routine";
-    else if (quantity.value !== null && quantity.unit) {
-      // 期限が無くても目標として返す。1回きりの作業なら確認画面で直せばよい。
-      // 黙って1回型のタスクにすると、ノルマが30分の作業として埋もれる。
-      kind = "goal";
-      needsDue = !dueText;
-    } else if (project.value) kind = "project";
-
-    // 数で数える目標・日課で、1件あたりが書かれていなければ、素の見積をそれとみなす。
-    // 「取材20件 45分」の45分は合計ではなく1件ぶん、と読むのが自然なため。
-    if ((kind === "goal" || kind === "routine") && quantity.value !== null && perItemMin == null && estimateMin != null) {
-      perItemMin = estimateMin;
-      estimateMin = null;
-    }
-
-    var title = cleanTitle(rest);
-    var count = range.count || 1;
-
-    // 見積を言わなかったときは、言葉から決める。人に聞かない。
-    // 題が無い断片（見出しや尻切れ）には埋めない。置くものが無いため。
-    if (title === null) {
-      // 何もしない
-    } else if ((kind === "goal" || kind === "routine") && quantity.value !== null) {
-      if (perItemMin == null) perItemMin = estimateFor(original, opts);
-    } else if (estimateMin == null) {
-      estimateMin = estimateFor(original, opts) * count;
-    } else {
-      estimateMin = estimateMin * count;
-    }
-
-    return {
-      kind: kind,
-      title: title,
-      count: count,
-      estimateMin: estimateMin,
-      due: dueText,
-      priority: priority.value == null ? DEFAULT_PRIORITY : priority.value,
-      quantity: quantity.value,
-      unit: quantity.unit,
-      current: current.value,
-      perItemMin: perItemMin,
-      per: cadenceValue ? cadenceValue.per : null,
-      weekdays: cadenceValue && cadenceValue.weekdays.length ? cadenceValue.weekdays : null,
-      projectType: project.value,
-      needsDue: needsDue,
-      category: guessCategory(original, opts.categoryHints)
-    };
-  }
-
-  /* ---------- 喋った塊を項目に割る ---------- */
-
-  /**
-   * 区切りには強弱がある。
-   *   強い（。改行）… 話が切り替わる。題の無い断片は「ここから先の見出し」
-   *   弱い（、あと）… 同じ話の続き。題の無い断片は「直前の項目の補足」
-   * この区別が無いと「取材150人、10月末まで」の後半が独立した項目になってしまう。
-   */
-  function splitFragments(text) {
-    var re = /([\n。！!？?]+)|([、,]+)|(そのあと|それから|あとは|あと(?!で)|次に|つぎに|加えて|あわせて)/g;
-    var pieces = [];
-    var last = 0;
-    var sepBefore = null;
-    var m;
-
-    while ((m = re.exec(text)) !== null) {
-      pieces.push({ text: text.slice(last, m.index), sepBefore: sepBefore });
-      sepBefore = m[1] ? "strong" : "weak";
-      last = re.lastIndex;
-    }
-    pieces.push({ text: text.slice(last), sepBefore: sepBefore });
-
-    var out = [];
-    var carried = null;
-    for (var i = 0; i < pieces.length; i++) {
-      var body = pieces[i].text.trim();
-      var sep = pieces[i].sepBefore;
-      if (carried === "strong" || sep === "strong") sep = "strong";
-      else if (carried === "weak" && sep === null) sep = "weak";
-
-      if (body === "") { carried = sep; continue; }
-      out.push({ text: body, sepBefore: sep });
-      carried = null;
-    }
-    return out;
-  }
-
-  /**
-   * 喋った一塊を、複数の項目に分けて返す。
-   *
-   * タイピングを避けるための入口。項目ごとに形（1回型/目標/日課/案件）と
-   * 分類と期限まで見分けるので、あとは確認して保存するだけにできる。
-   *
-   * @returns {Array} parse() と同じ形のオブジェクトの配列
-   */
-  function parseMany(text, now, options) {
-    var frags = splitFragments(normalize(text));
-    var items = [];
-    var header = null;
-
-    var carryBase = null;
-    var subjectLabel = null;
-    var subjectIndex = -1;
-    var brokenDown = false;
-    var stockTotal = null;
-
-    for (var i = 0; i < frags.length; i++) {
-      var frag = frags[i];
-      var withCarry = options || {};
-      if (carryBase) {
-        withCarry = {};
-        for (var key in (options || {})) withCarry[key] = options[key];
-        withCarry.carryBase = carryBase;
-      }
-      var result = parse(frag.text, now, withCarry);
-
-      // 「5以降はまっさら」は、総数を知らないと1本になってしまう。
-      // 直前に「10人分」と言われていれば、そこから残り本数を数える。
-      var tail = frag.text.match(/(\d+)\s*(?:以降|から先|以上)/);
-      if (tail && stockTotal) {
-        var from = Number(tail[1]);
-        if (from >= 1 && from <= stockTotal) {
-          var perOne = result.estimateMin && result.count ? result.estimateMin / result.count : result.estimateMin;
-          result.count = stockTotal - from + 1;
-          if (perOne) result.estimateMin = Math.round(perOne * result.count);
-        }
-      }
-      var matched = estimateBase(frag.text, options || {});
-      if (matched.matched) carryBase = matched.base;
-
-      // 見出しは、それを言った文の中だけで効く。
-      // 「今日中に、A、B。あとC」の C まで今日にすると、溜まっているだけのものが
-      // 今日の締切ものに化けてしまう。
-      if (frag.sepBefore === "strong") header = null;
-
-      if (result.title) {
-        // 「編集が10人分。1〜3はほぼ完成」——後ろの文は何の話か言わない。
-        // 見積は carryBase で引き継げるが、題は引き継がないと
-        // 「ほぼ完成で細かい調整」が項目名になってしまう。
-        if (matched.matched) {
-          subjectLabel = result.title;
-          subjectIndex = items.length;
-          if (result.count > 1) stockTotal = result.count;
-        } else if (subjectLabel) {
-          result.title = subjectLabel + " " + result.title;
-          brokenDown = true;
-        }
-
-        items.push({ raw: frag.text, result: result, header: header });
-        // 「今日中にカット、テロップ」のように、期限を最初の項目にくっつけて喋ることが多い。
-        // 1回型の期限だけを後ろへ引き継ぐ。目標と日課の期限はそれ自身のものなので引き継がない。
-        if (result.due && result.kind === "task") header = result;
-        continue;
-      }
-
-      // 題が無い断片。強い区切りの後（か先頭）なら見出し、そうでなければ直前の補足。
-      var isHeader = items.length === 0 || frag.sepBefore === "strong";
-      if (isHeader) {
-        if (result.due || result.weekdays) header = result;
-      } else {
-        var prev = items[items.length - 1];
-        prev.raw = prev.raw + " " + frag.text;
-        prev.result = parse(prev.raw, now, withCarry);
-      }
-    }
-
-    // 「10人分」と言った後に内訳（1〜3は…、4は…）を言われたら、
-    // 最初の総数はもう別々に数えている。残すと二重に積むことになる。
-    if (brokenDown && subjectIndex >= 0 && items[subjectIndex] && items[subjectIndex].result.count > 1) {
-      items.splice(subjectIndex, 1);
-    }
-
-    return items.map(function (item) {
-      var result = item.result;
-      if (item.header && !result.due && item.header.due) result.due = item.header.due;
-      return result;
-    });
-  }
-
-  /* ---------- すでに決まっている予定（バイト・授業など） ---------- */
-
-  var CLOCK = "(\\d{1,2})\\s*(?::\\s*(\\d{2})|時\\s*(半)?(?:(\\d{1,2})\\s*分)?)";
-  var RANGE_SEP = "\\s*(?:から|〜|～|-|–|ー|to)\\s*";
-
-  function clockMinutes(hour, colonMin, half, min) {
-    var h = Number(hour);
-    var m = 0;
-    if (colonMin !== undefined && colonMin !== "") m = Number(colonMin);
-    else if (half) m = 30;
-    else if (min !== undefined && min !== "") m = Number(min);
-    if (!isFinite(h) || h > 47 || m > 59) return null;
-    return h * 60 + m;
-  }
-
-  function hhmm(minutes) {
-    return String(Math.floor(minutes / 60)).padStart(2, "0") + ":" + String(minutes % 60).padStart(2, "0");
-  }
-
-  /**
-   * 「バイト 10時から17時」のような、動かせない予定を取り出す。
-   * 時刻の幅が読めた断片だけを返す。読めないものはタスク側で扱う。
-   */
-  function parseFixed(text, now) {
-    var frags = splitFragments(normalize(text));
-    var rangeRe = new RegExp(CLOCK + RANGE_SEP + CLOCK);
-    var durationRe = new RegExp(CLOCK + RANGE_SEP + "(\\d+)\\s*(時間半|時間|分)");
-    var out = [];
-
-    for (var i = 0; i < frags.length; i++) {
-      var body = frags[i].text;
-      var start = null;
-      var end = null;
-      var consumed = "";
-
-      // 長さの言い方を先に見る。「13時から2時間」の「2時間」を
-      // 終わりの時刻（2時）と読み違えないため。
-      var d = body.match(durationRe);
-      if (d) {
-        start = clockMinutes(d[1], d[2], d[3], d[4]);
-        var amount = Number(d[5]);
-        var span = d[6] === "分" ? amount : d[6] === "時間半" ? amount * 60 + 30 : amount * 60;
-        end = start == null ? null : start + span;
-        consumed = d[0];
-      } else {
-        var m = body.match(rangeRe);
-        if (m) {
-          start = clockMinutes(m[1], m[2], m[3], m[4]);
-          end = clockMinutes(m[5], m[6], m[7], m[8]);
-          consumed = m[0];
-        }
-      }
-
-      if (start == null || end == null || end <= start || end > 1440) continue;
-
-      var title = cleanTitle(body.replace(consumed, " "));
-      out.push({ title: title || "予定", start: hhmm(start), end: hhmm(end) });
-    }
-    return out;
-  }
-
-  /* ---------- 「N人分溜まってる」をN件に開く ---------- */
-
-  var DEFAULT_ITEM_MIN = 60;
-  var MAX_BATCH = 50; // これ以上は現実的に扱えないので打ち切る
-
-  /**
-   * 進み具合の言葉を「残っている割合」に落とす。
-   * 所要時間を人に入力させないための表。数字を聞き返さないのがこのアプリの要点。
-   */
-  var PROGRESS_WORDS = [
-    [/ほぼ完成|ほぼ終わ|あと少し|あとちょっと|細かい調整|微調整|仕上げだけ|もう少し/, 0.15],
-    [/半分|半ば|途中|折り返し/, 0.5],
-    [/まっさら|手つかず|手をつけて|これから|まだ何も|ゼロ|未着手/, 1],
-    [/(\d+)\s*割\s*(?:終わ|でき|済)/, function (m) { return Math.max(0, 1 - Number(m[1]) / 10); }],
-    [/(\d+)\s*%\s*(?:終わ|でき|済)/, function (m) { return Math.max(0, 1 - Number(m[1]) / 100); }]
-  ];
-
-  function progressRatio(text) {
-    for (var i = 0; i < PROGRESS_WORDS.length; i++) {
-      var m = text.match(PROGRESS_WORDS[i][0]);
-      if (!m) continue;
-      var value = PROGRESS_WORDS[i][1];
-      return typeof value === "function" ? value(m) : value;
-    }
-    return null;
-  }
-
-  function roundTo5(minutes) {
-    return Math.max(5, Math.round(minutes / 5) * 5);
-  }
-
-  /**
-   * 「編集が10人分溜まってる。1〜3はほぼ完成、4が半分、5以降はまっさら」を
-   * 10件ぶんの下書きに開く。所要時間は言葉から推定し、聞き返さない。
-   *
-   * @returns {{title, count, unit, items: [{index, label, estimateMin, ratio}]}|null}
-   */
-  function parseBatch(text, now, options) {
-    var opts = options || {};
-    var body = normalize(text);
-
-    var countMatch = body.match(new RegExp("(\\d+)\\s*(" + COUNT_UNITS + ")\\s*分?"));
-    if (!countMatch) return null;
-    var count = Math.min(MAX_BATCH, Number(countMatch[1]));
-    if (!(count > 1)) return null;
-
-    // 「毎日アポ5件」のような日課を、まとめ扱いに誤解しないための歯止め。
-    // 溜まっている旨か、進み具合の言葉が無ければ、まとめとは見なさない。
-    var looksStocked = /溜ま|たま|残って|ストック|分溜|待ち/.test(body);
-    if (!looksStocked && progressRatio(body) === null) return null;
-
-    var perItem = takeFirst(body, PER_ITEM_RULES);
-    var baseMin = perItem.value || Number(opts.defaultItemMin) || DEFAULT_ITEM_MIN;
-
-    // 題は、件数と進み具合の説明を落とした残り。最初の文だけを見る。
-    var head = body.split(/[。\n]/)[0];
-    var title = cleanTitle(
-      head
-        .replace(countMatch[0], " ")
-        .replace(/溜ま(って|った)(る|いる)?|たまって(る|いる)?|残って(る|いる)?|ある/g, " ")
-        .replace(/が|は|を|の$/g, " ")
-    ) || "作業";
-
-    var ratios = [];
-    for (var i = 0; i < count; i++) ratios.push(1);
-
-    // 「1〜3は…」「4が…」「5以降は…」を拾って、その範囲だけ塗り替える
-    var clauseRe = /(\d+)\s*(?:〜|～|-|–|から)\s*(\d+)|(\d+)\s*(?:以降|から先|以上)|(\d+)/g;
-    var clauses = body.split(/[、,。\n]/);
-    for (var c = 0; c < clauses.length; c++) {
-      var clause = clauses[c];
-      var ratio = progressRatio(clause);
-      if (ratio === null) continue;
-
-      clauseRe.lastIndex = 0;
-      var found = clauseRe.exec(clause);
-      if (!found) continue;
-
-      var from;
-      var to;
-      if (found[1] !== undefined && found[2] !== undefined) {
-        from = Number(found[1]);
-        to = Number(found[2]);
-      } else if (found[3] !== undefined) {
-        from = Number(found[3]);
-        to = count;
-      } else {
-        from = Number(found[4]);
-        to = from;
-      }
-      for (var n = from; n <= to && n <= count; n++) {
-        if (n >= 1) ratios[n - 1] = ratio;
-      }
-    }
-
-    var items = [];
-    for (var k = 0; k < count; k++) {
-      items.push({
-        index: k + 1,
-        label: title + " " + (k + 1),
-        ratio: ratios[k],
-        estimateMin: roundTo5(baseMin * ratios[k])
-      });
-    }
-
-    return { title: title, count: count, unit: countMatch[2], items: items };
-  }
-
+  return merged;
+}
+function normalizeSettings(settings) {
   return {
-    parse: parse,
-    parseMany: parseMany,
-    parseFixed: parseFixed,
-    parseBatch: parseBatch,
-    estimateFor: estimateFor
+    bufferMin: Number(settings.bufferMin), minBlock: Number(settings.minBlock), maxBlock: Number(settings.maxBlock),
+    breakMin: Number(settings.breakMin), lookaheadDays: Number(settings.lookaheadDays),
+    ignoredCalendarIds: settings.ignoredCalendarIds || [],
   };
-})();
+}
+function buildFreeIntervals({ now, events, settings }) {
+  const { bufferMin, lookaheadDays, ignoredCalendarIds } = settings;
+  const bufferMs = bufferMin * 60000, today = schStartOfDay(now), freeIntervals = [];
+  for (let d = 0; d < lookaheadDays; d++) {
+    const dayDate = schAddDays(today, d);
+    let windowStart = new Date(dayDate.getTime());
+    const windowEnd = schAddDays(dayDate, 1);
+    if (d === 0 && now > windowStart) windowStart = new Date(now.getTime());
+    if (windowStart >= windowEnd) continue;
+    const busy = [];
+    for (const event of events) {
+      if (ignoredCalendarIds.includes(event.calendarId)) continue;
+      const es = new Date(event.start).getTime() - bufferMs, ee = new Date(event.end).getTime() + bufferMs;
+      if (ee <= windowStart.getTime() || es >= windowEnd.getTime()) continue;
+      busy.push([Math.max(es, windowStart.getTime()), Math.min(ee, windowEnd.getTime())]);
+    }
+    const merged = mergeIntervals(busy);
+    let cursor = windowStart.getTime();
+    for (const [bs, be] of merged) {
+      if (bs > cursor) freeIntervals.push({ start: ceilTo5Minutes(new Date(cursor)), end: new Date(bs), day: dayDate });
+      cursor = Math.max(cursor, be);
+    }
+    if (cursor < windowEnd.getTime()) freeIntervals.push({ start: ceilTo5Minutes(new Date(cursor)), end: windowEnd, day: dayDate });
+  }
+  return freeIntervals.filter((iv) => iv.end.getTime() - iv.start.getTime() > 0);
+}
+function sortEdf(tasks) {
+  return tasks.map((t, idx) => ({ ...t, remaining: Number(t.remainingMinutes), _idx: idx })).sort((a, b) => {
+    if (a.deadline !== b.deadline) { if (a.deadline === null) return 1; if (b.deadline === null) return -1; return a.deadline < b.deadline ? -1 : 1; }
+    if (a.priority !== b.priority) return a.priority - b.priority;
+    if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? -1 : 1;
+    return a._idx - b._idx;
+  });
+}
+function placeForward(freeIntervals, sortedTasks, settings) {
+  const { minBlock, maxBlock, breakMin } = settings, blocks = [];
+  const pick = (dayKey) => sortedTasks.find((t) => t.remaining > 0 && (!t.notBefore || dayKey >= t.notBefore));
+  for (const interval of freeIntervals) {
+    const dayKey = schFormatDate(interval.day);
+    let cursor = interval.start.getTime(), remainingCapacity = (interval.end.getTime() - cursor) / 60000;
+    while (remainingCapacity >= minBlock) {
+      const task = pick(dayKey);
+      if (!task) break;
+      const blockLen = Math.min(maxBlock, task.remaining, remainingCapacity);
+      if (blockLen <= 0) break;
+      const blockStart = new Date(cursor), blockEnd = new Date(cursor + blockLen * 60000);
+      blocks.push({ taskId: task.id, start: blockStart.toISOString(), end: blockEnd.toISOString() });
+      task.remaining -= blockLen; task.lastPlacedEnd = blockEnd;
+      if (!task.firstPlacedStart) task.firstPlacedStart = blockStart;
+      cursor = blockEnd.getTime(); remainingCapacity -= blockLen;
+      if (remainingCapacity >= breakMin) { cursor += breakMin * 60000; remainingCapacity -= breakMin; } else { remainingCapacity = 0; }
+    }
+  }
+  return blocks;
+}
+function computeStartDeadline({ remaining, notBefore, deadlineDate }, freeIntervals) {
+  const deadlineBoundary = schAddDays(schStartOfDay(deadlineDate), 1).getTime();
+  const usable = freeIntervals.filter((iv) => {
+    if (iv.start.getTime() >= deadlineBoundary) return false;
+    if (notBefore && schFormatDate(iv.day) < notBefore) return false;
+    return true;
+  });
+  let need = remaining, startPoint = null;
+  for (let i = usable.length - 1; i >= 0 && need > 0; i--) {
+    const iv = usable[i], clippedEnd = Math.min(iv.end.getTime(), deadlineBoundary), capacity = (clippedEnd - iv.start.getTime()) / 60000;
+    if (capacity <= 0) continue;
+    if (need <= capacity) { startPoint = new Date(clippedEnd - need * 60000); need = 0; } else { need -= capacity; startPoint = iv.start; }
+  }
+  return need > 0 ? null : startPoint;
+}
+function buildSchedule({ tasks, events, settings, now }) {
+  const normSettings = normalizeSettings(settings);
+  const freeIntervals = buildFreeIntervals({ now, events, settings: normSettings });
+  const sortedTasks = sortEdf(tasks);
+  const blocks = placeForward(freeIntervals, sortedTasks, normSettings);
+  const taskStatus = {};
+  for (const task of sortedTasks) {
+    let state, startDeadline = null;
+    if (task.deadline) {
+      const deadlineDate = parseDateOnly(task.deadline);
+      const deadlineBoundary = schAddDays(schStartOfDay(deadlineDate), 1).getTime();
+      const sd = computeStartDeadline({ remaining: Number(task.remainingMinutes), notBefore: task.notBefore, deadlineDate }, freeIntervals);
+      startDeadline = sd ? sd.toISOString() : null;
+      if (!sd) state = 'late';
+      else if (task.remaining === 0) state = task.lastPlacedEnd.getTime() <= deadlineBoundary ? 'ok' : 'late';
+      else state = '未配置';
+    } else {
+      state = task.remaining === 0 ? 'ok' : '未配置';
+    }
+    taskStatus[task.id] = { state, startDeadline, remaining: task.remaining };
+  }
+  const dailyTotals = {};
+  for (const b of blocks) {
+    const dayKey = schFormatDate(schStartOfDay(new Date(b.start))), minutes = (new Date(b.end) - new Date(b.start)) / 60000;
+    dailyTotals[dayKey] = (dailyTotals[dayKey] || 0) + minutes;
+  }
+  const warnings = Object.entries(taskStatus).filter(([, s]) => s.state === 'late' || s.state === '未配置').map(([taskId, s]) => ({ taskId, state: s.state }));
+  return { blocks, taskStatus, dailyTotals, warnings };
+}
 
-var parse = DP_PARSER.parse;
-var parseMany = DP_PARSER.parseMany;
-var parseFixed = DP_PARSER.parseFixed;
-var estimateFor = DP_PARSER.estimateFor;
-var parseBatch = DP_PARSER.parseBatch;
+var DEMO_KEY_TASKS = 'dp_demo_tasks_v1';
+var DEMO_KEY_SETTINGS = 'dp_demo_settings_v1';
 
-if (typeof module !== "undefined" && module.exports) {
-  module.exports = {
-    parse: DP_PARSER.parse,
-    parseMany: DP_PARSER.parseMany,
-    parseFixed: DP_PARSER.parseFixed,
-    parseBatch: DP_PARSER.parseBatch,
-    estimateFor: DP_PARSER.estimateFor
+function demoUuid_() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+var DEMO_DEFAULT_CATEGORIES = [
+  { key: 'work', label: '仕事', color: '#4C6FFF' },
+  { key: 'school', label: '大学', color: '#FF8A3D' },
+  { key: 'personal', label: '個人', color: '#5FAE86' },
+];
+
+function demoDefaultSettings_() {
+  return {
+    bufferMin: 15, minBlock: 20, maxBlock: 90, breakMin: 10, lookaheadDays: 30,
+    readCalendarIds: [], writeCalendarId: '', ignoredCalendarIds: [], ignoredTitlePatterns: [],
+    categories: DEMO_DEFAULT_CATEGORIES,
   };
 }
 
-</script>
-
-
-<script>
-  // PWA 版: プリフライトを避けるため text/plain で投げる。
-  // GAS は 302 で最終URLへ飛ばすので、fetch が通らない環境向けに XHR で二度目を試す。
-  window.DP_VOICE = true;
-  window.DP_NEEDS_CONNECTION = true;
-
-  window.DP_CALL = function (action, payload) {
-    var conn = window.DP_CONNECTION;
-    if (!conn || !conn.url) return Promise.reject(new Error("接続されていません"));
-    var body = JSON.stringify({ action: action, key: conn.key, payload: payload || {} });
-
-    return fetch(conn.url, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: body,
-      redirect: "follow"
-    })
-      .then(function (res) { return res.json(); })
-      .catch(function () { return xhrPost(conn.url, body); })
-      .then(unwrap);
-  };
-
-  function xhrPost(url, body) {
-    return new Promise(function (resolve, reject) {
-      var xhr = new XMLHttpRequest();
-      xhr.open("POST", url, true);
-      xhr.setRequestHeader("Content-Type", "text/plain;charset=utf-8");
-      xhr.onload = function () {
-        try { resolve(JSON.parse(xhr.responseText)); }
-        catch (e) { reject(new Error("応答を読み取れませんでした")); }
-      };
-      xhr.onerror = function () { reject(new Error("通信できませんでした")); };
-      xhr.send(body);
-    });
-  }
-
-  function unwrap(res) {
-    if (!res || res.ok !== true) throw new Error((res && res.error) || "処理できませんでした");
-    return res.data;
-  }
-</script>
-
-
-
-
-<script>
-(function () {
-  "use strict";
-
-  var CONN_KEY = "dp.connection";
-  var CACHE_KEY = "dp.cache.today";
-  var CAT_VARS = ["--cat-1", "--cat-2", "--cat-3"];
-  var PRIORITY_LABEL = { 1: "最優先", 2: "急ぎ", 3: "通常", 4: "いつでも" };
-
-  var state = {
-    view: "day",
-    day: null,          // 表示中の1日（今日 or 選んだ日）
-    dayKey: null,
-    upcoming: null,
-    settings: null,
-    detailTaskId: null,
-    touched: {},
-    openedAt: Date.now(),
-    startLogged: false,
-    inflight: 0
-  };
-
-  var $ = function (id) { return document.getElementById(id); };
-
-  /* ---------- 接続 ---------- */
-
-  function loadConnection() {
-    if (!window.DP_NEEDS_CONNECTION) return true;
-    try {
-      var raw = localStorage.getItem(CONN_KEY);
-      if (!raw) return false;
-      window.DP_CONNECTION = JSON.parse(raw);
-      return !!(window.DP_CONNECTION && window.DP_CONNECTION.url);
-    } catch (e) { return false; }
-  }
-
-  function saveConnection(code) {
-    var json = decodeURIComponent(escape(atob(code.replace(/-/g, "+").replace(/_/g, "/"))));
-    var conn = JSON.parse(json);
-    if (!conn.url || !conn.key) throw new Error("接続コードの中身が足りません");
-    window.DP_CONNECTION = conn;
-    try { localStorage.setItem(CONN_KEY, JSON.stringify(conn)); } catch (e) {}
-  }
-
-  /* ---------- 時刻 ---------- */
-
-  function hm(value) {
-    var d = new Date(value);
-    return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
-  }
-
-  function hoursMinutes(min) {
-    var h = Math.floor(min / 60);
-    var m = min % 60;
-    return h > 0 ? h + "時間" + (m ? m + "分" : "") : m + "分";
-  }
-
-  function parseKey(key) {
-    var p = String(key).split("-");
-    return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
-  }
-
-  function keyOf(d) {
-    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
-  }
-
-  function todayKey() { return keyOf(new Date()); }
-
-  function addDaysKey(key, n) {
-    var d = parseKey(key);
-    d.setDate(d.getDate() + n);
-    return keyOf(d);
-  }
-
-  function dateLabel(key) {
-    var d = parseKey(key);
-    var wd = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
-    return d.getMonth() + 1 + "月" + d.getDate() + "日(" + wd + ")";
-  }
-
-  function categoryVar(name) {
-    var list = (state.settings && state.settings.categories) || [];
-    var i = list.indexOf(name);
-    return i >= 0 ? "var(" + CAT_VARS[i % CAT_VARS.length] + ")" : "var(--text-3)";
-  }
-
-  function alertIcon() {
-    return '<svg class="alert-icon" width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">' +
-      '<path d="M10 3.2 18 16.8H2z" stroke-linejoin="round"></path>' +
-      '<path d="M10 8v4M10 14.4v.2" stroke-linecap="round"></path></svg>';
-  }
-
-  /* ---------- 通信（細い進捗線。画面は差し替えない） ---------- */
-
-  function call(action, payload) {
-    state.inflight += 1;
-    $("progress").classList.add("on");
-    return window.DP_CALL(action, payload).then(finish, function (err) {
-      finish();
-      throw err;
-    });
-  }
-
-  function finish(value) {
-    state.inflight = Math.max(0, state.inflight - 1);
-    if (!state.inflight) $("progress").classList.remove("on");
-    return value;
-  }
-
-  /* ---------- 1日の表示（今日 / 選んだ日） ---------- */
-
-  function readCache() {
-    try { return JSON.parse(localStorage.getItem(CACHE_KEY) || "null"); } catch (e) { return null; }
-  }
-
-  function writeCache(payload) {
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify(payload)); } catch (e) {}
-  }
-
-  function loadToday(useCache) {
-    if (useCache) {
-      var cached = readCache();
-      if (cached && cached.date === todayKey()) {
-        state.day = cached;
-        state.dayKey = cached.date;
-        state.settings = cached.settings || state.settings;
-        renderDay();
-      }
-    }
-    return call("getToday", { now: new Date().toISOString() })
-      .then(function (data) {
-        state.day = data;
-        state.dayKey = data.date;
-        state.settings = data.settings;
-        writeCache(data);
-        $("staleBar").hidden = true;
-        renderDay();
-      })
-      .catch(function (err) {
-        if (state.day) $("staleBar").hidden = false;
-        else renderEmpty($("dayBody"), err.message);
-      });
-  }
-
-  function loadDay(key) {
-    state.dayKey = key;
-    return call("getDay", { date: key, now: new Date().toISOString() })
-      .then(function (data) {
-        state.day = data;
-        renderDay();
-      })
-      .catch(function (err) { renderEmpty($("dayBody"), err.message); });
-  }
-
-  function renderDay() {
-    var data = state.day;
-    if (!data) return;
-    var isToday = data.date === todayKey();
-
-    $("backRow").hidden = isToday;
-    $("dayTitle").textContent = dateLabel(data.date) + (isToday ? "" : "");
-    $("daySub").textContent = isToday ? "今日" : "";
-    $("dayTotals").textContent = data.plannedMin
-      ? hoursMinutes(data.plannedMin) + " / 空き " + hoursMinutes(data.freeMin)
-      : "空き " + hoursMinutes(data.freeMin);
-
-    renderAlerts(isToday ? (data.warnings || []) : []);
-    renderColumn(data, isToday);
-    if (isToday) scrollToNow();
-  }
-
-  function renderAlerts(warnings) {
-    var box = $("alertsBox");
-    box.textContent = "";
-    if (!warnings.length) return;
-
-    var title = document.createElement("div");
-    title.className = "group-title";
-    title.textContent = "間に合いません";
-    box.appendChild(title);
-
-    var group = document.createElement("div");
-    group.className = "group";
-    warnings.forEach(function (w) {
-      var cell = document.createElement("div");
-      cell.className = "cell alert-cell";
-      var btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "inner";
-      btn.style.width = "100%";
-      btn.innerHTML = alertIcon() + '<span><span class="title"></span><br><span class="meta"></span></span><span class="right">›</span>';
-      btn.querySelector(".title").textContent = w.title;
-      btn.querySelector(".meta").textContent = reasonText(w);
-      btn.addEventListener("click", function () { openDetail(w.taskId); });
-      cell.appendChild(btn);
-      group.appendChild(cell);
-    });
-    box.appendChild(group);
-  }
-
-  /** 期限を「今日まで」「あと3日」の言い方にする。 */
-  function dueWord(due) {
-    if (!due) return "いつでも";
-    var diff = Math.round((parseKey(due) - parseKey(todayKey())) / 86400000);
-    if (diff < 0) return (-diff) + "日すぎ";
-    if (diff === 0) return "今日まで";
-    if (diff === 1) return "明日まで";
-    if (diff <= 14) return "あと" + diff + "日";
-    return due.slice(5).replace("-", "/") + "まで";
-  }
-
-  function reasonText(w) {
-    if (w.type === "unplaced") return "置き場所がありません";
-    if (w.type === "late") return w.due ? w.due + " までに終わりません" : "期限に間に合いません";
-    if (w.startDeadline) return "着手期限 " + hm(w.startDeadline) + " を過ぎています";
-    return "着手が遅れています";
-  }
-
-  function renderColumn(data, isToday) {
-    var box = $("dayBody");
-    box.textContent = "";
-    var items = data.items || [];
-
-    if (!items.length) {
-      renderEmpty(box, isToday ? "今日ぶんの予定はありません" : "この日に置かれたものはありません");
-      return;
-    }
-
-    var title = document.createElement("div");
-    title.className = "group-title";
-    title.textContent = isToday ? "時間割" : dateLabel(data.date) + " の時間割";
-    box.appendChild(title);
-
-    var group = document.createElement("div");
-    group.className = "group";
-    var now = new Date();
-    var marked = false;
-
-    items.forEach(function (item) {
-      if (isToday && !marked && new Date(item.start) > now) {
-        group.appendChild(nowLine(now));
-        marked = true;
-      }
-      group.appendChild(itemCell(item, now, isToday));
-    });
-    if (isToday && !marked) group.appendChild(nowLine(now));
-
-    box.appendChild(group);
-  }
-
-  function nowLine(now) {
-    var div = document.createElement("div");
-    div.className = "nowline";
-    div.id = "nowMarker";
-    div.innerHTML = '<span class="t"></span><span class="l"></span>';
-    div.querySelector(".t").textContent = hm(now);
-    return div;
-  }
-
-  function itemCell(item, now, isToday) {
-    var cell = document.createElement("div");
-    var past = isToday && new Date(item.end) <= now;
-    cell.className = "cell " + item.type + (past ? " past" : "") + (item.loose ? " loose" : "");
-
-    var inner = document.createElement(item.type === "block" ? "button" : "div");
-    inner.className = "inner";
-    if (item.type === "block") inner.type = "button";
-
-    var time = document.createElement("span");
-    time.className = "time";
-    time.textContent = hm(item.start);
-
-    var mid = document.createElement("span");
-    var title = document.createElement("span");
-    title.className = "title";
-    title.textContent = item.title;
-    var meta = document.createElement("span");
-    meta.className = "meta";
-    if (item.type === "event") {
-      meta.textContent = "予定 " + hm(item.start) + "–" + hm(item.end);
-    } else if (item.loose) {
-      meta.textContent = item.category + " " + item.minutes + "分 · 空き時間ぶん";
-    } else {
-      meta.textContent = item.category + " " + item.minutes + "分 · " + dueWord(item.due);
-    }
-    mid.appendChild(title);
-    mid.appendChild(document.createElement("br"));
-    mid.appendChild(meta);
-
-    var right = document.createElement("span");
-    right.className = "right";
-
-    if (item.type === "block") {
-      var dot = document.createElement("span");
-      dot.className = "dot";
-      dot.style.setProperty("--cat", categoryVar(item.category));
-      right.appendChild(dot);
-      inner.addEventListener("click", function () {
-        if (cell.classList.contains("open")) { closeSwipes(); return; }
-        openDetail(item.taskId);
-      });
-      cell.classList.add("swipe");
-      attachSwipe(cell, inner, item.taskId);
-    }
-
-    inner.appendChild(time);
-    inner.appendChild(mid);
-    inner.appendChild(right);
-    cell.appendChild(inner);
-    return cell;
-  }
-
-  /* ---------- 横スワイプで削除 ---------- */
-
-  function closeSwipes(except) {
-    var open = document.querySelectorAll(".cell.open");
-    for (var i = 0; i < open.length; i++) if (open[i] !== except) open[i].classList.remove("open");
-  }
-
-  var SWIPE_WIDTH = 176; // 完了 88 + 削除 88
-
-  function attachSwipe(cell, inner, taskId) {
-    var actions = document.createElement("div");
-    actions.className = "swipe-actions";
-
-    var done = document.createElement("button");
-    done.type = "button";
-    done.className = "done";
-    done.textContent = "完了";
-    done.addEventListener("click", function (e) {
-      e.stopPropagation();
-      completeTask(taskId);
-    });
-
-    var del = document.createElement("button");
-    del.type = "button";
-    del.className = "del";
-    del.textContent = "削除";
-    del.addEventListener("click", function (e) {
-      e.stopPropagation();
-      deleteTask(taskId);
-    });
-
-    actions.appendChild(done);
-    actions.appendChild(del);
-    cell.insertBefore(actions, cell.firstChild);
-
-    var startX = 0;
-    var startY = 0;
-    var dragging = false;
-    var decided = false;
-
-    cell.addEventListener("touchstart", function (e) {
-      var t = e.touches[0];
-      startX = t.clientX;
-      startY = t.clientY;
-      dragging = true;
-      decided = false;
-    }, { passive: true });
-
-    cell.addEventListener("touchmove", function (e) {
-      if (!dragging) return;
-      var t = e.touches[0];
-      var dx = t.clientX - startX;
-      var dy = t.clientY - startY;
-
-      if (!decided) {
-        // 縦に動いているならスクロールに譲る
-        if (Math.abs(dy) > Math.abs(dx)) { dragging = false; return; }
-        if (Math.abs(dx) < 8) return;
-        decided = true;
-        closeSwipes(cell);
-      }
-      var base = cell.classList.contains("open") ? -SWIPE_WIDTH : 0;
-      var offset = Math.max(-SWIPE_WIDTH - 20, Math.min(0, base + dx));
-      inner.style.transition = "none";
-      inner.style.transform = "translateX(" + offset + "px)";
-    }, { passive: true });
-
-    cell.addEventListener("touchend", function (e) {
-      if (!dragging) return;
-      dragging = false;
-      inner.style.transition = "";
-      inner.style.transform = "";
-      if (!decided) return;
-      var dx = (e.changedTouches[0].clientX - startX);
-      var wasOpen = cell.classList.contains("open");
-      if (!wasOpen && dx < -44) cell.classList.add("open");
-      else if (wasOpen && dx > 44) cell.classList.remove("open");
-    });
-  }
-
-  // 作業開始前は最上部、作業中は現在時刻を上へ、終了後は最下部。
-  function scrollToNow() {
-    var scroll = $("scroll");
-    var settings = state.settings;
-    if (!settings) return;
-    var now = new Date();
-    var minutes = now.getHours() * 60 + now.getMinutes();
-    var startMin = toMinutes(settings.workStart, 480);
-    var endMin = toMinutes(settings.workEnd, 1440);
-
-    if (minutes < startMin) { scroll.scrollTop = 0; return; }
-    if (minutes >= endMin) { scroll.scrollTop = scroll.scrollHeight; return; }
-    var marker = $("nowMarker");
-    if (marker) scroll.scrollTop = Math.max(0, marker.offsetTop - 80);
-  }
-
-  function toMinutes(text, fallback) {
-    var m = String(text || "").match(/^(\d{1,2}):(\d{2})$/);
-    return m ? Number(m[1]) * 60 + Number(m[2]) : fallback;
-  }
-
-  function renderEmpty(box, message) {
-    box.textContent = "";
-    var div = document.createElement("div");
-    div.className = "empty";
-    div.textContent = message;
-    box.appendChild(div);
-  }
-
-  /* ---------- これから ---------- */
-
-  function loadUpcoming() {
-    return call("getUpcoming", { now: new Date().toISOString() })
-      .then(function (data) {
-        state.upcoming = data;
-        renderUpcoming();
-      })
-      .catch(function (err) { renderEmpty($("nextBody"), err.message); });
-  }
-
-  function renderUpcoming() {
-    var box = $("nextBody");
-    box.textContent = "";
-    var data = state.upcoming;
-    if (!data) return;
-
-    var any = false;
-    data.buckets.forEach(function (bucket) {
-      if (!bucket.days.length) return;
-      any = true;
-
-      var title = document.createElement("div");
-      title.className = "group-title";
-      title.textContent = bucket.label;
-      box.appendChild(title);
-
-      var group = document.createElement("div");
-      group.className = "group";
-      bucket.days.forEach(function (day) { group.appendChild(dayCell(day)); });
-      box.appendChild(group);
-    });
-
-    if (!any) {
-      renderEmpty(box, "二週間先までに置かれたものはありません");
-      return;
-    }
-
-    if (data.beyondMin) {
-      var note = document.createElement("div");
-      note.className = "banner";
-      note.textContent = "二週間より先に " + hoursMinutes(data.beyondMin) + " ぶん置かれています";
-      box.appendChild(note);
-    }
-  }
-
-  function dayCell(day) {
-    var cell = document.createElement("div");
-    cell.className = "cell";
-
-    var btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "inner plain";
-    btn.style.width = "100%";
-
-    var mid = document.createElement("span");
-    var title = document.createElement("span");
-    title.className = "title";
-    title.textContent = dateLabel(day.date);
-    var meta = document.createElement("span");
-    meta.className = "meta";
-    meta.textContent = day.taskCount + "件 " + hoursMinutes(day.plannedMin);
-    mid.appendChild(title);
-    mid.appendChild(document.createElement("br"));
-    mid.appendChild(meta);
-
-    var right = document.createElement("span");
-    right.className = "right";
-    (day.categories || []).forEach(function (c) {
-      var dot = document.createElement("span");
-      dot.className = "dot";
-      dot.style.setProperty("--cat", categoryVar(c));
-      right.appendChild(dot);
-    });
-    var chev = document.createElement("span");
-    chev.textContent = "›";
-    right.appendChild(chev);
-
-    btn.appendChild(mid);
-    btn.appendChild(right);
-    btn.addEventListener("click", function () {
-      switchTab("day");
-      loadDay(day.date);
-    });
-    cell.appendChild(btn);
-    return cell;
-  }
-
-  /* ---------- 追加：喋った塊を仕分けて、確認して、まとめて保存 ---------- */
-
-  var DEFAULT_ESTIMATE = 30; // 見積を言わなかったときの仮の値。確認画面で直せる。
-  var KIND_LABEL = { task: "1回", goal: "目標", routine: "日課", project: "案件" };
-  var review = [];   // 仕分けた結果。確認画面で編集される
-  var editingIndex = -1;
-
-  function openAdd() {
-    $("catchInput").value = "";
-    $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "";
-    $("reviewMsg").textContent = "";
-    review = [];
-    showStage("speak");
-    $("addBackdrop").hidden = false;
-    $("addSheet").hidden = false;
-    // ここで入力欄にフォーカスしない。iOSでキーボードが出ると音声認識が止まるため。
-  }
-
-  function closeAdd() {
-    stopVoice();
-    $("addBackdrop").hidden = true;
-    $("addSheet").hidden = true;
-  }
-
-  function showStage(name) {
-    $("stageSpeak").hidden = name !== "speak";
-    $("stageReview").hidden = name !== "review";
-    $("addStageTitle").textContent = name === "speak" ? "追加" : "これでいいですか";
-  }
-
-  function parserOptions() {
-    var settings = state.settings || {};
-    return {
-      projectTypes: settings.projectTypes || [],
-      categoryHints: settings.categoryHints || null
-    };
-  }
-
-  function updateSaveState() {
-    $("toReview").disabled = !($("catchInput").value || "").trim();
-  }
-
-  /** 喋った塊を項目に割って、確認画面へ。 */
-  function toReview() {
-    var text = $("catchInput").value.trim();
-    if (!text) return;
-    if (typeof parseMany !== "function") {
-      $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "解析を読み込めていません。画面を更新してください。";
-      return;
-    }
-
-    review = parseMany(text, new Date(), parserOptions()).map(function (r) {
-      // 期限を言わなかった数量もの（「編集が10人分」）は、期限を聞かずに
-      // まとめて1件のタスクにする。日付を尋ねる画面を出さないため。
-      if (r.needsDue && r.quantity && r.perItemMin) {
-        r = {
-          kind: "task", title: r.title + " " + r.quantity + (r.unit || "件"),
-          estimateMin: r.quantity * r.perItemMin, due: null, priority: r.priority,
-          category: r.category, quantity: null, unit: null, current: 0,
-          perItemMin: null, per: null, weekdays: null, count: 1
-        };
-      }
-      return r;
-    }).map(function (r) {
-      return {
-        kind: r.kind === "project" ? "task" : r.kind, // 案件はまだ作れないので1回型に寄せる
-        title: r.title,
-        estimateMin: r.estimateMin || (r.perItemMin ? null : DEFAULT_ESTIMATE),
-        provisional: false,
-        due: r.due,
-        priority: r.priority,
-        category: r.category || (state.settings && state.settings.defaultCategory) || null,
-        quantity: r.quantity,
-        unit: r.unit,
-        current: r.current || 0,
-        perItemMin: r.perItemMin || (r.kind === "goal" || (r.kind === "routine" && r.quantity) ? DEFAULT_ESTIMATE : null),
-        per: r.per,
-        weekdays: r.weekdays,
-        needsDue: !!r.needsDue
-      };
-    });
-
-    if (!review.length) {
-      $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "項目を取り出せませんでした。言い直してください。";
-      return;
-    }
-    showStage("review");
-    renderReview();
-  }
-
-  /** 今日 / 明日 / 一週間以内 / 二週間以内 / それ以降 / 期限なし に振り分けて見せる。 */
-  function reviewBuckets() {
-    var today = todayKey();
-    var groups = [
-      { label: "期限を決めてください", test: function (r) { return r.needsDue; } },
-      { label: "毎日・毎週", test: function (r) { return r.kind === "routine"; } },
-      { label: "今日", test: function (r) { return r.due && r.due <= today; } },
-      { label: "明日", test: function (r) { return r.due === addDaysKey(today, 1); } },
-      { label: "一週間以内", test: function (r) { return r.due && r.due <= addDaysKey(today, 7); } },
-      { label: "二週間以内", test: function (r) { return r.due && r.due <= addDaysKey(today, 14); } },
-      { label: "それ以降", test: function (r) { return !!r.due; } },
-      { label: "いつでも", test: function () { return true; } }
-    ];
-
-    var used = {};
-    return groups.map(function (g) {
-      var rows = [];
-      review.forEach(function (r, i) {
-        if (used[i] || !g.test(r)) return;
-        used[i] = true;
-        rows.push({ item: r, index: i });
-      });
-      return { label: g.label, rows: rows };
-    }).filter(function (g) { return g.rows.length; });
-  }
-
-  function renderReview() {
-    var box = $("reviewList");
-    box.textContent = "";
-
-    var minutes = review.reduce(function (sum, r) {
-      return sum + (r.estimateMin || (r.quantity || 0) * (r.perItemMin || 0));
-    }, 0);
-    $("reviewSummary").textContent = review.length + "件 / 合わせて " + hoursMinutes(minutes);
-
-    reviewBuckets().forEach(function (group) {
-      var title = document.createElement("div");
-      title.className = "group-title";
-      title.textContent = group.label;
-      box.appendChild(title);
-
-      var wrap = document.createElement("div");
-      wrap.className = "group";
-      group.rows.forEach(function (row) { wrap.appendChild(reviewCell(row.item, row.index)); });
-      box.appendChild(wrap);
-    });
-  }
-
-  function reviewCell(item, index) {
-    var cell = document.createElement("div");
-    cell.className = "cell";
-
-    var inner = document.createElement("div");
-    inner.className = "inner";
-    inner.style.gridTemplateColumns = "40px minmax(0,1fr) auto";
-
-    var badge = document.createElement("span");
-    badge.className = "kind-badge";
-    badge.textContent = KIND_LABEL[item.kind] || "1回";
-
-    var mid = document.createElement("button");
-    mid.type = "button";
-    mid.style.textAlign = "left";
-    mid.style.width = "100%";
-    var name = document.createElement("span");
-    name.className = "title";
-    name.textContent = item.title;
-    var meta = document.createElement("span");
-    meta.className = "meta";
-    meta.textContent = reviewMeta(item);
-    mid.appendChild(name);
-    mid.appendChild(document.createElement("br"));
-    mid.appendChild(meta);
-    mid.addEventListener("click", function () { openEdit(index); });
-
-    var right = document.createElement("span");
-    right.className = "right";
-    var dot = document.createElement("span");
-    dot.className = "dot";
-    dot.style.setProperty("--cat", categoryVar(item.category));
-    right.appendChild(dot);
-    var drop = document.createElement("button");
-    drop.type = "button";
-    drop.textContent = "×";
-    drop.setAttribute("aria-label", "この項目を消す");
-    drop.style.color = "var(--text-3)";
-    drop.style.fontSize = "20px";
-    drop.style.padding = "0 4px";
-    drop.addEventListener("click", function () {
-      review.splice(index, 1);
-      if (!review.length) { showStage("speak"); return; }
-      renderReview();
-    });
-    right.appendChild(drop);
-
-    inner.appendChild(badge);
-    inner.appendChild(mid);
-    inner.appendChild(right);
-    cell.appendChild(inner);
-    return cell;
-  }
-
-  function reviewMeta(item) {
-    var bits = [];
-    if (item.category) bits.push(item.category);
-    if (item.kind === "goal") {
-      var left = Math.max(0, (item.quantity || 0) - (item.current || 0));
-      var days = item.due ? Math.max(1, Math.round((parseKey(item.due) - parseKey(todayKey())) / 86400000) + 1) : 0;
-      bits.push((item.current || 0) + "/" + item.quantity + (item.unit || "件"));
-      if (days) {
-        bits.push(dateLabel(item.due) + "まで あと" + days + "日");
-        bits.push("週" + (Math.round(left / days * 70) / 10) + (item.unit || "件") + "のペース");
-      }
-      if (item.needsDue) bits.push("いつまでに？");
-    } else if (item.kind === "routine") {
-      if (item.quantity) bits.push(item.quantity + (item.unit || "件") + (item.per === "week" ? "/週" : "/日"));
-      if (item.perItemMin) bits.push("1件" + item.perItemMin + "分");
-      if (item.estimateMin) bits.push(item.estimateMin + "分");
-      if (item.weekdays) bits.push(item.weekdays.map(function (d) { return "日月火水木金土"[d]; }).join(""));
-    } else {
-      bits.push(item.estimateMin + "分");
-      if (item.due) bits.push(item.due.slice(5).replace("-", "/"));
-    }
-    return bits.join(" · ");
-  }
-
-  /* ---------- 1件を直す ---------- */
-
-  function openEdit(index) {
-    editingIndex = index;
-    var item = review[index];
-    $("eTitle").value = item.title || "";
-    $("eKind").value = item.kind;
-    $("eEstimate").value = item.estimateMin || "";
-    $("eDue").value = item.due || "";
-    $("ePriority").value = String(item.priority || 3);
-    $("eQuantity").value = item.quantity || "";
-    $("eCurrent").value = item.current || 0;
-    $("ePerItem").value = item.perItemMin || "";
-    fillCategories($("eCategory"), item.category);
-    syncEditRows();
-    $("editBackdrop").hidden = false;
-    $("editSheet").hidden = false;
-  }
-
-  function syncEditRows() {
-    var kind = $("eKind").value;
-    $("eQuantityRow").hidden = kind === "task";
-    $("eCurrentRow").hidden = kind !== "goal";
-    $("ePerItemRow").hidden = kind === "task";
-  }
-
-  function closeEdit() {
-    $("editBackdrop").hidden = true;
-    $("editSheet").hidden = true;
-    editingIndex = -1;
-  }
-
-  function applyEdit() {
-    if (editingIndex < 0) return;
-    var item = review[editingIndex];
-    item.title = $("eTitle").value.trim() || item.title;
-    item.kind = $("eKind").value;
-    item.estimateMin = Number($("eEstimate").value) || null;
-    item.provisional = false;
-    item.due = $("eDue").value || null;
-    item.needsDue = item.kind === "goal" && !item.due;
-    item.priority = Number($("ePriority").value) || 3;
-    item.category = $("eCategory").value;
-    item.quantity = Number($("eQuantity").value) || null;
-    item.current = Number($("eCurrent").value) || 0;
-    item.perItemMin = Number($("ePerItem").value) || null;
-    if (item.kind === "task" && !item.estimateMin) item.estimateMin = DEFAULT_ESTIMATE;
-    closeEdit();
-    renderReview();
-  }
-
-  function fillCategories(select, selected) {
-    select.textContent = "";
-    var cats = (state.settings && state.settings.categories) || ["仕事", "大学", "個人"];
-    cats.forEach(function (c) {
-      var opt = document.createElement("option");
-      opt.value = c;
-      opt.textContent = c;
-      select.appendChild(opt);
-    });
-    if (selected) select.value = selected;
-    else if (state.settings && state.settings.defaultCategory) select.value = state.settings.defaultCategory;
-  }
-
-  /* ---------- まとめて保存 ---------- */
-
-  function saveAll() {
-    if (!review.length) return;
-
-    // 目標は期限が無いと配分（今日ぶん何件か）を計算できない。ここで止める。
-    var missing = review.filter(function (r) { return r.kind === "goal" && !r.due; });
-    if (missing.length) {
-      $("reviewMsg").textContent =
-        "「" + missing[0].title + "」の期限を決めてください。いつまでかが無いと1日ぶんを計算できません。";
-      return;
-    }
-
-    $("saveAll").disabled = true;
-    $("reviewMsg").textContent = "保存しています";
-
-    var jobs = review.map(function (item) {
-      if (item.kind === "goal") {
-        return call("addGoal", {
-          goal: {
-            name: item.title,
-            category: item.category,
-            target: item.quantity,
-            unit: item.unit || "件",
-            current: item.current || 0,
-            startDate: todayKey(),
-            due: item.due,
-            perItemMin: item.perItemMin || DEFAULT_ESTIMATE,
-            dailyCap: 0,
-            priority: item.priority
-          }
-        });
-      }
-      if (item.kind === "routine") {
-        return call("addRoutine", {
-          routine: {
-            name: item.title,
-            category: item.category,
-            quantity: item.quantity || null,
-            unit: item.unit || null,
-            per: item.per || "day",
-            perItemMin: item.perItemMin || null,
-            minutes: item.quantity ? null : (item.estimateMin || DEFAULT_ESTIMATE),
-            weekdays: item.weekdays || null,
-            priority: item.priority
-          }
-        });
-      }
-      return call("addTask", {
-        task: {
-          title: item.title,
-          estimateMin: item.estimateMin || DEFAULT_ESTIMATE,
-          due: item.due || "",
-          priority: item.priority,
-          category: item.category,
-          source: state.usedVoice ? "音声" : "手入力"
-        }
-      });
-    });
-
-    Promise.all(jobs)
-      .then(function () {
-        logKpi("addMany", Date.now() - state.addOpenedAt);
-        closeAdd();
-        return refreshAll();
-      })
-      .catch(function (err) {
-        $("reviewMsg").textContent = err.message;
-        $("saveAll").disabled = false;
-      });
-  }
-
-  /* ---------- 今日を組む：先に埋まっている時間を喋る ---------- */
-
-  var planPreview = [];
-
-  function openPlan() {
-    $("planInput").value = "";
-    $("planMsg").textContent = "";
-    planPreview = [];
-    renderPlanPreview();
-    $("planTitle").textContent = dateLabel(state.dayKey || todayKey()) + " の予定";
-    $("planBackdrop").hidden = false;
-    $("planSheet").hidden = false;
-    loadFixedForDay();
-    // ここでも入力欄にフォーカスしない（キーボードが出ると音声が止まる）
-  }
-
-  function closePlan() {
-    stopVoice();
-    $("planBackdrop").hidden = true;
-    $("planSheet").hidden = true;
-  }
-
-  /** すでに登録してある固定予定を出しておく。言い直すと丸ごと置き換わる。 */
-  function loadFixedForDay() {
-    var day = state.dayKey || todayKey();
-    call("listFixedEvents", { from: day, to: day })
-      .then(function (data) {
-        if (!data.events.length) return;
-        planPreview = data.events.map(function (e) {
-          return { title: e.title, start: e.start, end: e.end };
-        });
-        renderPlanPreview();
-      })
-      .catch(function () {});
-  }
-
-  function parsePlanInput() {
-    var text = $("planInput").value.trim();
-    if (!text) return;
-    if (typeof parseFixed !== "function") {
-      $("planMsg").textContent = "解析を読み込めていません。画面を更新してください。";
-      return;
-    }
-    var found = parseFixed(text, new Date());
-    if (!found.length) {
-      $("planMsg").textContent = "時刻が読み取れませんでした。「10時から17時」のように言ってください。";
-      return;
-    }
-    $("planMsg").textContent = "";
-    planPreview = found;
-    renderPlanPreview();
-  }
-
-  function renderPlanPreview() {
-    var box = $("planPreview");
-    box.textContent = "";
-    $("planApply").disabled = false;
-
-    if (!planPreview.length) {
-      var none = document.createElement("div");
-      none.className = "parsed";
-      none.textContent = "埋まっている時間なし。1日ぜんぶ使えます。";
-      box.appendChild(none);
-      return;
-    }
-
-    var title = document.createElement("div");
-    title.className = "group-title";
-    title.textContent = "埋まっている時間";
-    box.appendChild(title);
-
-    var group = document.createElement("div");
-    group.className = "group";
-    planPreview.forEach(function (item, index) {
-      var cell = document.createElement("div");
-      cell.className = "cell";
-      var inner = document.createElement("div");
-      inner.className = "inner";
-
-      var time = document.createElement("span");
-      time.className = "time";
-      time.textContent = item.start;
-
-      var mid = document.createElement("span");
-      var name = document.createElement("span");
-      name.className = "title";
-      name.textContent = item.title;
-      var meta = document.createElement("span");
-      meta.className = "meta";
-      meta.textContent = item.start + "–" + item.end;
-      mid.appendChild(name);
-      mid.appendChild(document.createElement("br"));
-      mid.appendChild(meta);
-
-      var right = document.createElement("span");
-      right.className = "right";
-      var drop = document.createElement("button");
-      drop.type = "button";
-      drop.textContent = "×";
-      drop.setAttribute("aria-label", "消す");
-      drop.style.color = "var(--text-3)";
-      drop.style.fontSize = "20px";
-      drop.style.padding = "0 4px";
-      drop.addEventListener("click", function () {
-        planPreview.splice(index, 1);
-        renderPlanPreview();
-      });
-      right.appendChild(drop);
-
-      inner.appendChild(time);
-      inner.appendChild(mid);
-      inner.appendChild(right);
-      cell.appendChild(inner);
-      group.appendChild(cell);
-    });
-    box.appendChild(group);
-  }
-
-  function applyPlan() {
-    var day = state.dayKey || todayKey();
-    $("planApply").disabled = true;
-    $("planMsg").textContent = "組んでいます";
-
-    call("setFixedEvents", { date: day, items: planPreview })
-      .then(function () { return call("regenerate", { now: new Date().toISOString() }); })
-      .then(function () {
-        closePlan();
-        return refreshAll();
-      })
-      .catch(function (err) {
-        $("planMsg").textContent = err.message;
-        $("planApply").disabled = false;
-      });
-  }
-
-  /* ---------- 音声 ---------- */
-
-  var recognition = null;
-
-  function voiceSupported() {
-    return !!(window.DP_VOICE && (window.SpeechRecognition || window.webkitSpeechRecognition));
-  }
-
-  var voiceTarget = "catchInput";
-
-  function startVoice(target) {
-    voiceTarget = target || "catchInput";
-    if (recognition) { stopVoice(); return; }
-    var Recognizer = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!Recognizer) {
-      $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "この端末では音声入力を使えません。文字で入力してください。";
-      return;
-    }
-
-    recognition = new Recognizer();
-    recognition.lang = "ja-JP";
-    recognition.interimResults = true;
-    recognition.continuous = false;
-    state.usedVoice = true;
-
-    var gotResult = false;
-    var gotError = false;
-
-    recognition.onstart = function () { setMic(true); $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = ""; };
-    recognition.onresult = function (e) {
-      gotResult = true;
-      var text = "";
-      for (var i = 0; i < e.results.length; i++) text += e.results[i][0].transcript;
-      $(voiceTarget).value = text;
-      if (voiceTarget === "catchInput") updateSaveState();
-      else parsePlanInput();
-    };
-    recognition.onerror = function (e) {
-      gotError = true;
-      var code = e && e.error ? e.error : "unknown";
-      if (code === "not-allowed" || code === "service-not-allowed") {
-        $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "マイクが許可されていません（" + code + "）。";
-        $(voiceTarget).focus(); // マイクを開けなかったときだけフォーカスする
-      } else if (code === "no-speech") {
-        $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "聞き取れませんでした。もう一度押して話してください。";
-      } else if (code === "audio-capture") {
-        $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "マイクが見つかりませんでした（audio-capture）。";
-      } else if (code === "language-not-supported") {
-        $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "この端末は日本語の音声認識に対応していません。";
-      } else {
-        $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "音声を認識できませんでした（" + code + "）。";
-      }
-    };
-    recognition.onend = function () {
-      setMic(false);
-      recognition = null;
-      if (!gotResult && !gotError) {
-        $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "認識が始まらずに終了しました。文字で入力してください。";
-      }
-    };
-
-    try { recognition.start(); }
-    catch (err) {
-      setMic(false);
-      recognition = null;
-      $(voiceTarget === "planInput" ? "planMsg" : "addMsg").textContent = "マイクを開けませんでした（" + String(err && err.name || err) + "）。";
-      $(voiceTarget).focus();
-    }
-  }
-
-  function stopVoice() {
-    if (!recognition) return;
-    try { recognition.stop(); } catch (e) {}
-    recognition = null;
-    setMic(false);
-  }
-
-  function setMic(listening) {
-    var isPlan = voiceTarget === "planInput";
-    var btn = $(isPlan ? "planMic" : "micBtn");
-    var label = $(isPlan ? "planMicLabel" : "micLabel");
-    if (!btn) return;
-    btn.setAttribute("data-listening", listening ? "true" : "false");
-    label.textContent = listening ? "聞いています（押すと止まる）" : (isPlan ? "話す" : "話して追加");
-  }
-
-  /* ---------- 詳細 ---------- */
-
-  function openDetail(taskId) {
-    state.detailTaskId = taskId;
-    $("detailMsg").textContent = "";
-    $("detailBackdrop").hidden = false;
-    $("detailSheet").hidden = false;
-    $("detailTitle").textContent = "読み込み中";
-    $("detailSub").textContent = "";
-    $("detailFacts").textContent = "";
-    $("detailWarn").textContent = "";
-
-    call("getTask", { id: taskId })
-      .then(renderDetail)
-      .catch(function (err) { $("detailTitle").textContent = err.message; });
-  }
-
-  function renderDetail(t) {
-    state.detailTask = t;
-    $("tTitle").value = t.title || "";
-    $("tEstimate").value = t.remainMin != null ? t.remainMin : (t.estimateMin || "");
-    $("tDue").value = t.due || "";
-    $("tPriority").value = String(t.priority || 3);
-    fillCategories($("tCategory"), t.category);
-    $("detailTitle").textContent = t.title;
-    $("detailSub").textContent = [t.category, (t.remainMin != null ? t.remainMin : t.estimateMin) + "分", t.due || "期限なし"].join(" · ");
-
-    var warn = warningFor(t.id);
-    $("detailWarn").textContent = warn ? reasonText(warn) : "";
-
-    $("dTitle").value = t.title || "";
-    $("dEstimate").value = t.remainMin != null ? t.remainMin : t.estimateMin;
-    $("dDue").value = t.due || "";
-    $("dPriority").value = String(t.priority || 3);
-    fillCategories($("dCategory"), t.category);
-
-    var facts = $("detailFacts");
-    facts.textContent = "";
-    addFact(facts, "これは何か", t.detail || "（説明はありません）");
-    addFact(facts, "受け取った日", t.receivedAt || "（不明）");
-    addFact(facts, "発生源", t.source || "手入力");
-    addFact(facts, "優先度", PRIORITY_LABEL[t.priority] || "通常");
-    if (t.memo) addFact(facts, "メモ", t.memo);
-    if (t.sourceUrl) addFact(facts, "出典", t.sourceUrl);
-  }
-
-  function saveDetail() {
-    if (!state.detailTaskId) return;
-    var minutes = Number($("dEstimate").value) || null;
-    $("detailSave").disabled = true;
-    mutate("updateTask", {
-      id: state.detailTaskId,
-      patch: {
-        title: $("dTitle").value.trim(),
-        remainMin: minutes,
-        estimateMin: minutes,
-        due: $("dDue").value || "",
-        priority: Number($("dPriority").value) || 3,
-        category: $("dCategory").value
-      }
-    }).then(function () { $("detailSave").disabled = false; });
-  }
-
-  function warningFor(taskId) {
-    var list = (state.day && state.day.warnings) || [];
-    for (var i = 0; i < list.length; i++) if (list[i].taskId === taskId) return list[i];
-    return null;
-  }
-
-  function addFact(box, term, value) {
-    var wrap = document.createElement("dl");
-    wrap.className = "fact";
-    var dt = document.createElement("dt");
-    dt.textContent = term;
-    var dd = document.createElement("dd");
-    dd.textContent = value;
-    wrap.appendChild(dt);
-    wrap.appendChild(dd);
-    box.appendChild(wrap);
-  }
-
-  function closeDetail() {
-    $("detailBackdrop").hidden = true;
-    $("detailSheet").hidden = true;
-    state.detailTaskId = null;
-  }
-
-  function mutate(action, payload, onError) {
-    return call(action, payload)
-      .then(function () { closeDetail(); closeSwipes(); return refreshAll(); })
-      .catch(function (err) { (onError || function (m) { $("detailMsg").textContent = m; })(err.message); });
-  }
-
-  function startTask(taskId) {
-    if (!state.startLogged) {
-      logKpi("firstStart", Date.now() - state.openedAt);
-      state.startLogged = true;
-    }
-    return mutate("updateTask", { id: taskId, patch: { status: "進行中" } });
-  }
-
-  function completeTask(taskId) {
-    return mutate("updateTask", { id: taskId, patch: { status: "完了" } });
-  }
-
-  function deferTask(taskId) {
-    return mutate("updateTask", { id: taskId, patch: { notBefore: addDaysKey(todayKey(), 1), status: "未着手" } });
-  }
-
-  function deleteTask(taskId) {
-    return mutate("deleteTask", { id: taskId });
-  }
-
-  /** 一度入れたタスクを直す。題も時間も期限も分類も、ここで変えられる。 */
-  function saveTaskEdits() {
-    var id = state.detailTaskId;
-    if (!id) return;
-    var minutes = Number($("tEstimate").value);
-    var patch = {
-      title: $("tTitle").value.trim(),
-      due: $("tDue").value || "",
-      priority: Number($("tPriority").value) || 3,
-      category: $("tCategory").value
-    };
-    if (minutes > 0) {
-      patch.remainMin = minutes;
-      var current = state.detailTask || {};
-      // 残りを増やしたら見積も追いつかせる（残り > 見積 の矛盾を作らない）
-      if (!current.estimateMin || minutes > current.estimateMin) patch.estimateMin = minutes;
-    }
-    if (!patch.title) { $("detailMsg").textContent = "題を入れてください。"; return; }
-
-    $("actSaveTask").disabled = true;
-    mutate("updateTask", { id: id, patch: patch })
-      .then(function () { $("actSaveTask").disabled = false; })
-      .catch(function () { $("actSaveTask").disabled = false; });
-  }
-
-  /* ---------- 設定 ---------- */
-
-  var SETTING_FIELDS = [
-    ["作業時間", [["workStart", "開始", "time"], ["workEnd", "終了", "text"]]],
-    ["ブロック", [
-      ["chunkMinMin", "最短（分）", "number"],
-      ["chunkMaxMin", "最長（分）", "number"],
-      ["breakMin", "休憩（分）", "number"],
-      ["bufferMin", "予定前後（分）", "number"],
-      ["horizonDays", "何日先まで", "number"]
-    ]],
-    ["分類", [["categories", "名前", "text"], ["defaultCategory", "未判定のとき", "text"]]],
-    ["カレンダー", [["readCalendarIds", "読み込む", "text"], ["ignoreEventPattern", "無視する予定", "text"]]]
+// localStorageが使えない環境(サンドボックス上のdata:プレビューなど)でも
+// タスクが消えたりしないよう、メモリ上のキャッシュを正とし、保存は
+// できる場合だけの「おまけ」として扱う。
+var demoSettingsCache_ = null;
+var demoTasksCache_ = null;
+
+function demoLoadSettings_() {
+  if (demoSettingsCache_) return demoSettingsCache_;
+  var loaded = demoDefaultSettings_();
+  try {
+    var raw = localStorage.getItem(DEMO_KEY_SETTINGS);
+    if (raw) loaded = Object.assign(demoDefaultSettings_(), JSON.parse(raw));
+  } catch (e) { /* storage unavailable: メモリ上の既定値のまま続行 */ }
+  demoSettingsCache_ = loaded;
+  return demoSettingsCache_;
+}
+
+function demoSaveSettings_(patch) {
+  var next = Object.assign(demoLoadSettings_(), patch);
+  demoSettingsCache_ = next;
+  try { localStorage.setItem(DEMO_KEY_SETTINGS, JSON.stringify(next)); } catch (e) { /* 保存できなければメモリだけで続行 */ }
+  return next;
+}
+
+function demoSeedTasks_() {
+  var now = new Date();
+  var today = now.toISOString().slice(0, 10);
+  var tomorrow = new Date(now.getTime() + 86400000).toISOString().slice(0, 10);
+  return [
+    {
+      id: demoUuid_(), title: 'お礼メール送る', estimateMinutes: 10, remainingMinutes: 10,
+      deadline: tomorrow, priority: 2, category: 'personal', status: '未着手', notBefore: null,
+      source: '例', externalId: null, sourceUrl: '', receivedAt: today, detail: '取材に来てもらったお礼',
+      memo: '', actualMinutes: 0, createdAt: now.toISOString(), updatedAt: now.toISOString(),
+      completedAt: '', kind: '', editStage: 0, order: 1,
+    },
+    {
+      id: demoUuid_(), title: '資料をまとめる', estimateMinutes: 40, remainingMinutes: 40,
+      deadline: tomorrow, priority: 3, category: 'work', status: '未着手', notBefore: null,
+      source: '例', externalId: null, sourceUrl: '', receivedAt: today, detail: '',
+      memo: '', actualMinutes: 0, createdAt: now.toISOString(), updatedAt: now.toISOString(),
+      completedAt: '', kind: '', editStage: 0, order: 2,
+    },
+    {
+      id: demoUuid_(), title: '田中さんインタビュー編集', estimateMinutes: 120, remainingMinutes: 90,
+      deadline: tomorrow, priority: 2, category: 'personal', status: '進行中', notBefore: null,
+      source: '例', externalId: null, sourceUrl: '', receivedAt: today, detail: '',
+      memo: '', actualMinutes: 30, createdAt: now.toISOString(), updatedAt: now.toISOString(),
+      completedAt: '', kind: '編集', editStage: 1, order: 3,
+    },
   ];
+}
 
-  function renderSettings() {
-    var box = $("settingsBody");
-    box.textContent = "";
+function demoLoadTasks_() {
+  if (demoTasksCache_) return demoTasksCache_;
+  var loaded = null;
+  try {
+    var raw = localStorage.getItem(DEMO_KEY_TASKS);
+    if (raw) loaded = JSON.parse(raw);
+  } catch (e) { /* storage unavailable: この後シードして続行 */ }
+  if (!loaded) {
+    loaded = demoSeedTasks_();
+    try { localStorage.setItem(DEMO_KEY_TASKS, JSON.stringify(loaded)); } catch (e) { /* 保存できなければメモリだけで続行 */ }
+  }
+  demoTasksCache_ = loaded;
+  return demoTasksCache_;
+}
 
-    if (window.DP_NEEDS_CONNECTION) box.appendChild(connectionSection());
-    if (!state.settings) {
-      if (!window.DP_NEEDS_CONNECTION || loadConnection()) {
-        call("getSettings").then(function (s) { state.settings = s; renderSettings(); }).catch(function () {});
+function demoSaveTasks_(tasks) {
+  demoTasksCache_ = tasks;
+  try { localStorage.setItem(DEMO_KEY_TASKS, JSON.stringify(tasks)); } catch (e) { /* 保存できなければメモリだけで続行 */ }
+}
+
+function demoAnswerQuestion_(task, question) {
+  if (/受領|振られた|頼まれた|いつから/.test(question)) return task.receivedAt ? ('この依頼を受け取ったのは ' + task.receivedAt + ' です。') : null;
+  if (/出典|どこから|ソース|リンク/.test(question)) { if (task.sourceUrl) return '出典: ' + task.sourceUrl; if (task.source) return '発生源: ' + task.source; return null; }
+  if (/見積|何分|どれくらいかかる/.test(question)) { if (task.estimateMinutes == null) return null; return '見積は' + task.estimateMinutes + '分、残りは' + task.remainingMinutes + '分です。'; }
+  if (/期限|いつまで/.test(question)) return task.deadline ? ('期限は ' + task.deadline + ' です。') : '期限は設定されていません。';
+  if (/これは何|詳細|何のタスク/.test(question)) return task.detail || null;
+  return null;
+}
+
+function demoHandleAction_(action, payload) {
+  payload = payload || {};
+  var tasks, task, i, now;
+
+  if (action === 'getSettingsApi') return demoLoadSettings_();
+  if (action === 'saveSettingsApi') return demoSaveSettings_(payload);
+  if (action === 'listTasksApi') return demoLoadTasks_();
+  if (action === 'parseTaskText') return parseTask(payload.text, new Date());
+
+  if (action === 'createTaskDirect') {
+    if (!payload.estimateMinutes || Number(payload.estimateMinutes) <= 0) throw new Error('見積時間(分)は必須です');
+    tasks = demoLoadTasks_();
+    now = new Date().toISOString();
+    var settings = demoLoadSettings_();
+    task = {
+      id: demoUuid_(), title: payload.title || '', estimateMinutes: Number(payload.estimateMinutes),
+      remainingMinutes: Number(payload.estimateMinutes), deadline: payload.deadline || null,
+      priority: payload.priority || 3, category: payload.category || (settings.categories[settings.categories.length - 1] || {}).key,
+      status: '未着手', notBefore: payload.notBefore || null, source: payload.source || '手入力',
+      externalId: payload.externalId || null, sourceUrl: payload.sourceUrl || '', receivedAt: payload.receivedAt || now,
+      detail: payload.detail || '', memo: payload.memo || '', actualMinutes: 0,
+      createdAt: now, updatedAt: now, completedAt: '', kind: payload.kind || '', editStage: 0,
+      order: Date.now(),
+    };
+    tasks.push(task);
+    demoSaveTasks_(tasks);
+    return { id: task.id };
+  }
+
+  if (action === 'updateTaskApi') {
+    tasks = demoLoadTasks_();
+    for (i = 0; i < tasks.length; i++) {
+      if (tasks[i].id === payload.id) {
+        Object.assign(tasks[i], payload.patch);
+        tasks[i].updatedAt = new Date().toISOString();
+        if (payload.patch.status === '完了' && !tasks[i].completedAt) tasks[i].completedAt = new Date().toISOString();
+        demoSaveTasks_(tasks);
+        return { ok: true };
       }
-      return;
     }
+    throw new Error('タスクが見つかりません: ' + payload.id);
+  }
 
-    SETTING_FIELDS.forEach(function (grp) {
-      var title = document.createElement("div");
-      title.className = "group-title";
-      title.textContent = grp[0];
-      box.appendChild(title);
+  if (action === 'deleteTaskApi') {
+    tasks = demoLoadTasks_();
+    var next = tasks.filter(function (t) { return t.id !== payload.id; });
+    if (next.length === tasks.length) throw new Error('タスクが見つかりません: ' + payload.id);
+    demoSaveTasks_(next);
+    return { ok: true };
+  }
 
-      var group = document.createElement("div");
-      group.className = "group";
-      grp[1].forEach(function (field) {
-        var row = document.createElement("div");
-        row.className = "field";
-        var lab = document.createElement("label");
-        lab.textContent = field[1];
-        lab.setAttribute("for", "set_" + field[0]);
-        var input = document.createElement("input");
-        input.id = "set_" + field[0];
-        input.type = field[2];
-        var value = state.settings[field[0]];
-        input.value = Array.isArray(value) ? value.join(",") : (value == null ? "" : value);
-        row.appendChild(lab);
-        row.appendChild(input);
-        group.appendChild(row);
-      });
-      box.appendChild(group);
+  if (action === 'answerQuestion') {
+    tasks = demoLoadTasks_();
+    task = tasks.filter(function (t) { return t.id === payload.taskId; })[0];
+    if (!task) throw new Error('タスクが見つかりません: ' + payload.taskId);
+    var ans = demoAnswerQuestion_(task, payload.question);
+    return { answer: ans || 'このタスクの情報からは分かりません。', method: ans ? 'rule' : 'unanswered' };
+  }
+
+  if (action === 'generateSchedule') {
+    var s = demoLoadSettings_();
+    var allTasks = demoLoadTasks_();
+    var active = allTasks.filter(function (t) { return t.status === '未着手' || t.status === '進行中'; });
+    var byId = {};
+    active.forEach(function (t) { byId[t.id] = t; });
+    var forScheduler = active.map(function (t) {
+      return { id: t.id, title: t.title, estimateMinutes: t.estimateMinutes, remainingMinutes: t.remainingMinutes, deadline: t.deadline, priority: t.priority, notBefore: t.notBefore, createdAt: t.createdAt };
     });
-
-    var save = document.createElement("button");
-    save.className = "bigbtn filled";
-    save.type = "button";
-    save.textContent = "保存して作り直す";
-    save.addEventListener("click", saveSettingsFromForm);
-    box.appendChild(save);
-
-    var regen = document.createElement("button");
-    regen.className = "bigbtn";
-    regen.type = "button";
-    regen.textContent = "いま時間割を作り直す";
-    regen.addEventListener("click", function () {
-      regen.disabled = true;
-      call("regenerate", { now: new Date().toISOString() })
-        .then(refreshAll)
-        .catch(function () {})
-        .then(function () { regen.disabled = false; });
+    var now2 = new Date();
+    var result = buildSchedule({ tasks: forScheduler, events: [], settings: s, now: now2 });
+    var blocksWithMeta = result.blocks.map(function (b) {
+      var t = byId[b.taskId];
+      return { taskId: b.taskId, title: t ? t.title : '(不明)', category: t ? t.category : null, start: b.start, end: b.end };
     });
-    box.appendChild(regen);
-
-    if (!window.DP_NEEDS_CONNECTION) box.appendChild(codeSection());
-
-    var version = document.createElement("div");
-    version.className = "parsed";
-    version.textContent = "画面の版 " + (window.DP_BUILD || "不明") +
-      " / 解析 " + (typeof parseFixed === "function" ? "読み込みずみ" : "未読み込み");
-    box.appendChild(version);
-  }
-
-  /** GAS 側の画面でだけ出す。iPhone に入れる PWA へ渡す接続コード。 */
-  function codeSection() {
-    var wrap = document.createElement("div");
-    var title = document.createElement("div");
-    title.className = "group-title";
-    title.textContent = "iPhone用の接続コード";
-    wrap.appendChild(title);
-
-    var group = document.createElement("div");
-    group.className = "group";
-    var row = document.createElement("div");
-    row.className = "field";
-    var input = document.createElement("input");
-    input.type = "text";
-    input.readOnly = true;
-    input.style.textAlign = "left";
-    input.value = "取得しています";
-    row.appendChild(input);
-    group.appendChild(row);
-    wrap.appendChild(group);
-
-    call("connectionCode")
-      .then(function (r) { input.value = r.code; })
-      .catch(function (err) { input.value = err.message; });
-
-    return wrap;
-  }
-
-  function connectionSection() {
-    var wrap = document.createElement("div");
-    var title = document.createElement("div");
-    title.className = "group-title";
-    title.textContent = "接続";
-    wrap.appendChild(title);
-
-    var group = document.createElement("div");
-    group.className = "group";
-    var row = document.createElement("div");
-    row.className = "field";
-    var input = document.createElement("input");
-    input.type = "text";
-    input.id = "connCode";
-    input.style.textAlign = "left";
-    input.placeholder = "接続コードを貼る";
-    row.appendChild(input);
-    group.appendChild(row);
-    wrap.appendChild(group);
-
-    var msg = document.createElement("div");
-    msg.className = "msg";
-    wrap.appendChild(msg);
-
-    var btn = document.createElement("button");
-    btn.className = "bigbtn filled";
-    btn.type = "button";
-    btn.textContent = window.DP_CONNECTION ? "接続しなおす" : "接続する";
-    btn.addEventListener("click", function () {
-      try { saveConnection(input.value.trim()); }
-      catch (e) { msg.textContent = "接続コードを読み取れませんでした。"; return; }
-      msg.textContent = "確認しています";
-      call("ping")
-        .then(function () {
-          msg.textContent = "";
-          state.settings = null;
-          return refreshAll().then(function () { switchTab("day"); });
-        })
-        .catch(function (err) { msg.textContent = err.message; });
+    var warningsWithTitle = result.warnings.map(function (w) {
+      var t = byId[w.taskId];
+      return { taskId: w.taskId, title: t ? t.title : '(不明)', state: w.state };
     });
-    wrap.appendChild(btn);
-    return wrap;
+    return { blocks: blocksWithMeta, taskStatus: result.taskStatus, dailyTotals: result.dailyTotals, warnings: warningsWithTitle, events: [], settings: s, now: now2.toISOString() };
   }
 
-  function saveSettingsFromForm() {
-    var patch = {};
-    SETTING_FIELDS.forEach(function (grp) {
-      grp[1].forEach(function (field) {
-        var input = $("set_" + field[0]);
-        if (input) patch[field[0]] = input.value;
-      });
-    });
+  throw new Error('このデモでは使えない操作です: ' + action);
+}
 
-    call("saveSettings", { patch: patch })
-      .then(function (s) {
-        state.settings = s;
-        return call("regenerate", { now: new Date().toISOString() });
-      })
-      .then(refreshAll)
-      .catch(function (err) { alert(err.message); });
+function callApi(action, payload) {
+  return new Promise(function (resolve, reject) {
+    setTimeout(function () {
+      try { resolve(demoHandleAction_(action, payload)); }
+      catch (e) { reject(e); }
+    }, 120);
+  });
+}
+// ===DEMO:LOCAL-END===
+
+// ===VOICE:GAS-START===
+var IS_PWA_BUILD = false;
+function toggleVoice() {
+  showToast('音声入力はホーム画面に追加したアプリでご利用いただけます');
+}
+function stopVoiceInput() {}
+// ===VOICE:GAS-END===
+
+var state = {
+  tab: 'today',
+  settings: null,
+  schedule: null,
+  tasks: [],
+  categoryFilter: null,
+  activeTaskId: null,
+  parsed: null,
+  addCategory: null,
+  addPriority: 3,
+};
+
+function categoryByKey(key) {
+  var list = (state.settings && state.settings.categories) || [];
+  for (var i = 0; i < list.length; i++) if (list[i].key === key) return list[i];
+  return null;
+}
+
+function showToast(msg) {
+  var el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(function () { el.remove(); }, 2600);
+}
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  return (d.getMonth() + 1) + '/' + d.getDate();
+}
+// 日付の文字列化は必ず現地時刻の年月日で行う(スケジューラのschFormatDate/
+// schStartOfDayと同じ流儀)。toISOString()はUTCに変換してしまうため、JSTだと
+// 0:00〜9:00の間だけ日付が1日ずれる不具合が過去にあった。
+function dateKeyFromDate_(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function todayKey() { return dateKeyFromDate_(new Date()); }
+function dateKeyOf(iso) { return dateKeyFromDate_(new Date(iso)); }
+function addDaysKey(base, days) {
+  var parts = base.split('-').map(Number);
+  var d = new Date(parts[0], parts[1] - 1, parts[2]);
+  d.setDate(d.getDate() + days);
+  return dateKeyFromDate_(d);
+}
+
+// ---------- タブ切り替え ----------
+document.getElementById('tabbar').addEventListener('click', function (e) {
+  var btn = e.target.closest('button[data-tab]');
+  if (!btn) return;
+  setTab(btn.dataset.tab);
+});
+
+function setTab(tab) {
+  state.tab = tab;
+  ['today', 'tasks', 'settings'].forEach(function (t) {
+    document.getElementById('tab-' + t).hidden = t !== tab;
+  });
+  document.querySelectorAll('#tabbar button').forEach(function (b) {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
+  document.getElementById('connectionSection').hidden = !(tab === 'settings' && IS_PWA_BUILD);
+}
+
+// ---------- 今日タブ ----------
+function renderWarnings() {
+  var warnings = (state.schedule && state.schedule.warnings) || [];
+  var banner = document.getElementById('warningBanner');
+  if (warnings.length === 0) {
+    banner.hidden = true;
+    return;
+  }
+  banner.hidden = false;
+  document.getElementById('warningText').textContent =
+    'あと' + warnings.length + '件、間に合わない見込みです';
+  var list = document.getElementById('warningList');
+  list.innerHTML = '';
+  warnings.forEach(function (w) {
+    var row = document.createElement('div');
+    row.className = 'warning-row';
+    row.innerHTML = '<div>' + escapeHtml(w.title) + '</div><div class="state">' +
+      (w.state === 'late' ? '着手期限を過ぎています' : '置き場所がありません') + '</div>';
+    list.appendChild(row);
+  });
+}
+document.getElementById('warningSummary').addEventListener('click', function () {
+  document.getElementById('warningBanner').classList.toggle('expanded');
+});
+
+// 「今日」に置いたかどうかの判定はスケジューラ任せのまま。変えるのは表示だけ:
+// 時刻は出さず、1タスク1行・重さの色ドット・長押しでの手動並べ替えにする。
+function weightTier(minutes) {
+  if (minutes <= 20) return 'light';
+  if (minutes <= 60) return 'medium';
+  return 'heavy';
+}
+
+function renderSchedule() {
+  var list = document.getElementById('scheduleList');
+  list.innerHTML = '';
+  var blocks = (state.schedule && state.schedule.blocks) || [];
+  var today = todayKey();
+
+  var seen = {};
+  var todaysTaskIds = [];
+  blocks.forEach(function (b) {
+    if (dateKeyOf(b.start) !== today) return;
+    if (seen[b.taskId]) return;
+    seen[b.taskId] = true;
+    todaysTaskIds.push(b.taskId);
+  });
+
+  var items = todaysTaskIds
+    .map(function (id) { return state.tasks.find(function (t) { return t.id === id; }); })
+    .filter(Boolean);
+  items.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+
+  if (items.length === 0) {
+    list.innerHTML = '<div class="empty-state">今日に配置されたタスクはありません</div>';
+    return;
   }
 
-  /* ---------- KPI ---------- */
-
-  function logKpi(kind, ms) {
-    try { window.DP_CALL("logEvent", { kind: kind, detail: String(Math.round(ms / 100) / 10) + "秒" }); }
-    catch (e) {}
-  }
-
-  /* ---------- タブ ---------- */
-
-  function switchTab(name) {
-    state.view = name;
-    $("viewDay").hidden = name !== "day";
-    $("viewNext").hidden = name !== "next";
-    $("viewSettings").hidden = name !== "settings";
-    $("fab").hidden = name === "settings";
-    closeSwipes();
-
-    var buttons = document.querySelectorAll(".tabbar button");
-    for (var i = 0; i < buttons.length; i++) {
-      if (buttons[i].getAttribute("data-tab") === name) buttons[i].setAttribute("aria-current", "page");
-      else buttons[i].removeAttribute("aria-current");
+  items.forEach(function (t) {
+    var row = document.createElement('div');
+    row.className = 'schedule-row';
+    row.dataset.taskId = t.id;
+    var cat = t.category ? categoryByKey(t.category) : null;
+    var barColor = cat ? cat.color : 'var(--text-2)';
+    var tier = weightTier(t.remainingMinutes);
+    var sub;
+    if (t.kind === '編集') {
+      var stage = t.editStage || 0;
+      sub = '<div class="mini-stage-row">' +
+        '<div class="mini-stage" aria-hidden="true">' + STAGE_LABELS.map(function (_, i) {
+          return '<span' + (i <= stage ? ' class="filled"' : '') + '></span>';
+        }).join('') + '</div>' +
+        '<span class="mini-stage-label">' + STAGE_LABELS[stage] + '(' + (stage + 1) + '/' + STAGE_LABELS.length + ')</span>' +
+        '</div>';
+    } else {
+      sub = '<span class="sub">' + WEIGHT_LABELS[tier] + '</span>';
     }
+    row.innerHTML =
+      '<div class="weight-dot ' + tier + '"></div>' +
+      '<div class="row-cat-bar" style="background:' + barColor + '"></div>' +
+      '<div class="row-title">' + escapeHtml(t.title) + sub + '</div>';
+    list.appendChild(row);
+  });
 
-    if (name === "next") loadUpcoming();
-    if (name === "settings") renderSettings();
-  }
-
-  function refreshAll() {
-    var jobs = [];
-    if (state.dayKey && state.dayKey !== todayKey()) jobs.push(loadDay(state.dayKey));
-    else jobs.push(loadToday(false));
-    if (state.view === "next") jobs.push(loadUpcoming());
-    return Promise.all(jobs);
-  }
-
-  /* ---------- 起動 ---------- */
-
-  function boot() {
-    var tabs = document.querySelectorAll(".tabbar button");
-    for (var i = 0; i < tabs.length; i++) {
-      (function (b) {
-        b.addEventListener("click", function () {
-          if (b.getAttribute("data-tab") === "day" && state.dayKey !== todayKey()) loadToday(false);
-          switchTab(b.getAttribute("data-tab"));
-        });
-      })(tabs[i]);
-    }
-
-    $("backBtn").addEventListener("click", function () {
-      loadToday(true);
-      switchTab("next");
+  list.querySelectorAll('.schedule-row[data-task-id]').forEach(function (row) {
+    row.addEventListener('click', function () {
+      if (row._justDragged) { row._justDragged = false; return; }
+      openDetail(row.dataset.taskId);
     });
+  });
+  attachReorder(list);
+}
 
-    $("fab").addEventListener("click", function () {
-      state.addOpenedAt = Date.now();
-      state.usedVoice = false;
-      openAdd();
+// ---------- 長押し→ドラッグでの並べ替え ----------
+var REORDER_HOLD_MS = 450;
+var REORDER_MOVE_TOLERANCE = 8;
+
+function attachReorder(list) {
+  Array.from(list.querySelectorAll('.schedule-row[data-task-id]')).forEach(function (row) {
+    var pressTimer = null;
+    var startX = 0, startY = 0;
+
+    row.addEventListener('pointerdown', function (e) {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      startX = e.clientX; startY = e.clientY;
+      pressTimer = setTimeout(function () { beginRowDrag(row, e.pointerId); }, REORDER_HOLD_MS);
     });
-    $("addCancel").addEventListener("click", closeAdd);
-    $("addBackdrop").addEventListener("click", closeAdd);
-    $("catchInput").addEventListener("input", updateSaveState);
-    $("toReview").addEventListener("click", toReview);
-    $("saveAll").addEventListener("click", saveAll);
-    $("backToSpeak").addEventListener("click", function () { showStage("speak"); });
-    $("editClose").addEventListener("click", closeEdit);
-    $("editBackdrop").addEventListener("click", closeEdit);
-    $("editApply").addEventListener("click", applyEdit);
-    $("eKind").addEventListener("change", syncEditRows);
+    row.addEventListener('pointermove', function (e) {
+      if (!pressTimer) return;
+      if (Math.abs(e.clientX - startX) > REORDER_MOVE_TOLERANCE || Math.abs(e.clientY - startY) > REORDER_MOVE_TOLERANCE) {
+        clearTimeout(pressTimer); pressTimer = null;
+      }
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (evt) {
+      row.addEventListener(evt, function () { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } });
+    });
+  });
+}
 
-    var mic = $("micBtn");
-    if (!voiceSupported()) mic.hidden = true;
-    else mic.addEventListener("click", function () { startVoice("catchInput"); });
+function beginRowDrag(row, pointerId) {
+  row._justDragged = true;
+  try { row.setPointerCapture(pointerId); } catch (e) { /* noop */ }
+  row.classList.add('dragging');
+  var list = row.parentElement;
 
-    $("planDayBtn").addEventListener("click", openPlan);
-    $("planCancel").addEventListener("click", closePlan);
-    $("planBackdrop").addEventListener("click", closePlan);
-    $("planInput").addEventListener("input", parsePlanInput);
-    $("planApply").addEventListener("click", applyPlan);
-    var planMic = $("planMic");
-    if (!voiceSupported()) planMic.hidden = true;
-    else planMic.addEventListener("click", function () { startVoice("planInput"); });
+  function onMove(e) {
+    if (e.pointerId !== pointerId) return;
+    e.preventDefault();
+    var y = e.clientY;
+    var others = Array.from(list.querySelectorAll('.schedule-row[data-task-id]')).filter(function (r) { return r !== row; });
+    var after = others.find(function (r) {
+      var rect = r.getBoundingClientRect();
+      return y < rect.top + rect.height / 2;
+    });
+    if (after) list.insertBefore(row, after); else list.appendChild(row);
+  }
+  function onUp(e) {
+    if (e.pointerId !== pointerId) return;
+    row.classList.remove('dragging');
+    row.removeEventListener('pointermove', onMove);
+    row.removeEventListener('pointerup', onUp);
+    row.removeEventListener('pointercancel', onUp);
+    commitScheduleOrder(list);
+  }
+  row.addEventListener('pointermove', onMove);
+  row.addEventListener('pointerup', onUp);
+  row.addEventListener('pointercancel', onUp);
+}
 
-    $("detailClose").addEventListener("click", closeDetail);
-    $("detailBackdrop").addEventListener("click", closeDetail);
-    $("actStart").addEventListener("click", function () { startTask(state.detailTaskId); });
-    $("actDone").addEventListener("click", function () { completeTask(state.detailTaskId); });
-    $("actDefer").addEventListener("click", function () { deferTask(state.detailTaskId); });
-    $("actDelete").addEventListener("click", function () { deleteTask(state.detailTaskId); });
-    $("actSaveTask").addEventListener("click", saveTaskEdits);
-    $("detailSave").addEventListener("click", saveDetail);
+function commitScheduleOrder(list) {
+  var rows = Array.from(list.querySelectorAll('.schedule-row[data-task-id]'));
+  Promise.all(rows.map(function (r, i) {
+    return callApi('updateTaskApi', { id: r.dataset.taskId, patch: { order: i } });
+  })).then(function () { return refreshAll(); })
+    .catch(function (err) { showToast(String(err.message || err)); });
+}
 
-    $("scroll").addEventListener("scroll", function () { closeSwipes(); }, { passive: true });
+// ---------- タスクタブ ----------
+function renderCategoryChips() {
+  var wrap = document.getElementById('categoryChips');
+  wrap.innerHTML = '';
+  var all = document.createElement('button');
+  all.className = 'chip' + (state.categoryFilter === null ? ' active' : '');
+  all.textContent = 'すべて';
+  all.addEventListener('click', function () { state.categoryFilter = null; renderTasks(); renderCategoryChips(); });
+  wrap.appendChild(all);
+  (state.settings.categories || []).forEach(function (cat) {
+    var chip = document.createElement('button');
+    chip.className = 'chip' + (state.categoryFilter === cat.key ? ' active' : '');
+    chip.textContent = cat.label;
+    chip.addEventListener('click', function () { state.categoryFilter = cat.key; renderTasks(); renderCategoryChips(); });
+    wrap.appendChild(chip);
+  });
+  var done = document.createElement('button');
+  done.className = 'chip' + (state.showCompleted ? ' active' : '');
+  done.textContent = '完了済み';
+  done.addEventListener('click', function () { state.showCompleted = !state.showCompleted; renderTasks(); renderCategoryChips(); });
+  wrap.appendChild(done);
+}
 
-    if (window.DP_NEEDS_CONNECTION && !loadConnection()) {
-      switchTab("settings");
-      return;
-    }
-    switchTab("day");
-    loadToday(true);
+function renderTasks() {
+  var list = document.getElementById('taskList');
+  list.innerHTML = '';
+  var today = todayKey();
+  var tasks;
+
+  if (state.showCompleted) {
+    tasks = state.tasks.filter(function (t) { return t.status === '完了'; })
+      .sort(function (a, b) { return (b.completedAt || '') < (a.completedAt || '') ? -1 : 1; });
+  } else {
+    tasks = state.tasks.filter(function (t) {
+      return t.status !== '完了' && t.status !== '取消' &&
+        (state.categoryFilter === null || t.category === state.categoryFilter);
+    }).sort(function (a, b) {
+      if (a.deadline !== b.deadline) {
+        if (!a.deadline) return 1;
+        if (!b.deadline) return -1;
+        return a.deadline < b.deadline ? -1 : 1;
+      }
+      return a.priority - b.priority;
+    });
   }
 
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
-  else boot();
-})();
+  if (tasks.length === 0) {
+    list.innerHTML = '<div class="empty-state">' +
+      (state.showCompleted ? '完了したタスクはまだありません' : 'タスクがありません') + '</div>';
+    return;
+  }
+
+  tasks.forEach(function (t) {
+    var row = document.createElement('div');
+    row.className = 'task-row';
+    row.dataset.taskId = t.id;
+    var overdue = t.deadline && t.deadline < today;
+    var sub;
+    if (state.showCompleted) {
+      sub = t.completedAt ? fmtDate(t.completedAt) + 'に完了' : '完了';
+    } else if (t.notBefore && t.notBefore > today) {
+      sub = '延期中(' + fmtDate(t.notBefore) + '〜)';
+    } else if (t.kind === '編集') {
+      sub = STAGE_LABELS[t.editStage || 0] + 'まで進行';
+    } else {
+      sub = WEIGHT_LABELS[weightTier(t.remainingMinutes)];
+    }
+    row.innerHTML =
+      '<div class="row-title"><div>' + escapeHtml(t.title) + '</div><div class="sub">' + sub + '</div></div>' +
+      '<div class="deadline' + (overdue ? ' overdue' : '') + '">' + (t.deadline ? fmtDate(t.deadline) : '') + '</div>';
+    row.addEventListener('click', function () { openDetail(t.id); });
+    list.appendChild(row);
+  });
+}
+
+// ---------- 詳細シート ----------
+// 「編集」タスクは開始/完了ではなく、5段階の進捗を数直線上のバーで手動管理する。
+// 段階を動かしてもスケジューラの配置には影響しない(見積・残りは今まで通り1つのまま)。
+var STAGE_LABELS = ['カット', 'テロップ', '演出・画角', '言い回し調整', '最終確認'];
+
+function renderStageDots(value) {
+  var wrap = document.getElementById('stageDots');
+  wrap.innerHTML = '';
+  STAGE_LABELS.forEach(function (_, i) {
+    var dot = document.createElement('span');
+    if (i <= value) dot.className = 'filled';
+    wrap.appendChild(dot);
+  });
+  document.getElementById('stageLabel').textContent = STAGE_LABELS[value];
+}
+
+function openDetail(taskId) {
+  var task = state.tasks.find(function (t) { return t.id === taskId; });
+  if (!task) return;
+  state.activeTaskId = taskId;
+  document.getElementById('detailTitle').textContent = task.title;
+  document.getElementById('detailBody').textContent = task.detail || '(詳細は登録されていません)';
+  document.getElementById('detailReceived').textContent = task.receivedAt ? fmtDate(task.receivedAt) : '不明';
+  document.getElementById('detailNumbers').textContent =
+    '見積' + task.estimateMinutes + '分 / 残り' + task.remainingMinutes + '分 / 期限' + (task.deadline || 'なし');
+  document.getElementById('detailSource').textContent = task.sourceUrl || task.source || '';
+  document.getElementById('qaAnswer').hidden = true;
+  document.getElementById('qaInput').value = '';
+
+  var isDone = task.status === '完了';
+  var isEdit = task.kind === '編集';
+  document.getElementById('bringBackRow').hidden = isDone || !(task.notBefore && task.notBefore > todayKey());
+  document.getElementById('simpleActions').hidden = isDone || isEdit;
+  document.getElementById('editActions').hidden = isDone || !isEdit;
+  if (isEdit && !isDone) {
+    var stage = task.editStage || 0;
+    document.getElementById('stageSlider').value = stage;
+    renderStageDots(stage);
+  }
+  openSheet('detailSheet');
+}
+
+document.getElementById('bringBackBtn').addEventListener('click', function () {
+  updateActiveTask({ notBefore: null });
+});
+var confirmCallback = null;
+function showConfirm(message, onOk) {
+  confirmCallback = onOk;
+  document.getElementById('confirmMessage').textContent = message;
+  document.getElementById('sheetBackdrop').hidden = false;
+  document.getElementById('confirmSheet').hidden = false;
+}
+function hideConfirm_() {
+  document.getElementById('confirmSheet').hidden = true;
+}
+document.getElementById('confirmCancelBtn').addEventListener('click', function () {
+  confirmCallback = null;
+  hideConfirm_();
+});
+document.getElementById('confirmOkBtn').addEventListener('click', function () {
+  var cb = confirmCallback;
+  confirmCallback = null;
+  hideConfirm_();
+  if (cb) cb();
+});
+document.getElementById('deleteTaskBtn').addEventListener('click', function () {
+  showConfirm('このタスクを削除します。元に戻せません。よろしいですか？', function () {
+    callApi('deleteTaskApi', { id: state.activeTaskId })
+      .then(function () { closeSheet('detailSheet'); return refreshAll(); })
+      .catch(function (err) { showToast(String(err.message || err)); });
+  });
+});
+document.getElementById('startTaskBtn').addEventListener('click', function () {
+  updateActiveTask({ status: '進行中' });
+});
+document.getElementById('completeTaskBtn').addEventListener('click', function () {
+  completeActiveTask();
+});
+document.getElementById('finishEditBtn').addEventListener('click', function () {
+  completeActiveTask();
+});
+document.getElementById('deferTaskBtn').addEventListener('click', function () {
+  deferActiveTask();
+});
+document.getElementById('deferEditBtn').addEventListener('click', function () {
+  deferActiveTask();
+});
+document.getElementById('stageSlider').addEventListener('input', function (e) {
+  renderStageDots(Number(e.target.value));
+});
+document.getElementById('stageSlider').addEventListener('change', function (e) {
+  var stage = Number(e.target.value);
+  callApi('updateTaskApi', { id: state.activeTaskId, patch: { editStage: stage, status: stage > 0 ? '進行中' : '未着手' } })
+    .then(function () { return refreshAll(); })
+    .catch(function (err) { showToast(String(err.message || err)); });
+});
+function completeActiveTask() {
+  updateActiveTask({ status: '完了', remainingMinutes: 0 });
+}
+function deferActiveTask() {
+  updateActiveTask({ status: '未着手', notBefore: addDaysKey(todayKey(), 1) });
+}
+function updateActiveTask(patch) {
+  callApi('updateTaskApi', { id: state.activeTaskId, patch: patch })
+    .then(function () { closeSheet('detailSheet'); return refreshAll(); })
+    .catch(function (err) { showToast(String(err.message || err)); });
+}
+
+document.getElementById('qaAskBtn').addEventListener('click', function () {
+  var q = document.getElementById('qaInput').value.trim();
+  if (!q) return;
+  callApi('answerQuestion', { taskId: state.activeTaskId, question: q })
+    .then(function (res) {
+      var el = document.getElementById('qaAnswer');
+      el.hidden = false;
+      el.textContent = res.answer;
+    })
+    .catch(function (err) { showToast(String(err.message || err)); });
+});
+
+// ---------- 追加シート ----------
+document.getElementById('fabAdd').addEventListener('click', function () {
+  document.getElementById('addText').value = '';
+  document.getElementById('pvDeadline').value = '';
+  state.addPriority = 3;
+  state.addCategory = (state.settings.categories[0] || {}).key || null;
+  state.addKind = '';
+  state.addWeight = 'medium';
+  renderAddChips();
+  openSheet('addSheet');
+});
+document.getElementById('micButton').addEventListener('click', toggleVoice);
+document.getElementById('cancelAddBtn').addEventListener('click', function () {
+  closeSheet('addSheet');
+});
+
+var parseDebounce = null;
+document.getElementById('addText').addEventListener('input', function (e) {
+  clearTimeout(parseDebounce);
+  parseDebounce = setTimeout(function () { previewParse(e.target.value); }, 250);
+});
+
+function previewParse(text) {
+  if (!text.trim()) return;
+  callApi('parseTaskText', { text: text }).then(function (parsed) {
+    state.parsed = parsed;
+    document.getElementById('pvDeadline').value = parsed.deadline || '';
+    state.addPriority = parsed.priority;
+    if (parsed.estimateMinutes) state.addWeight = weightTier(parsed.estimateMinutes);
+    renderAddChips();
+  });
+}
+
+// 見積は分単位で打たせず、重さ3段階のどれかを選ぶだけにする。実際の分数は
+// 内部で代表値に変換する(今日タブの重さドットと同じ境界に合わせてある)。
+var WEIGHT_MINUTES = { light: 15, medium: 40, heavy: 90 };
+var WEIGHT_LABELS = { light: '軽い', medium: '普通', heavy: '重い' };
+
+function renderAddChips() {
+  var wWrap = document.getElementById('weightChips');
+  wWrap.innerHTML = '';
+  ['light', 'medium', 'heavy'].forEach(function (w) {
+    var chip = document.createElement('button');
+    chip.className = 'chip' + (state.addWeight === w ? ' active' : '');
+    chip.textContent = WEIGHT_LABELS[w];
+    chip.addEventListener('click', function () { state.addWeight = w; renderAddChips(); });
+    wWrap.appendChild(chip);
+  });
+
+  var pWrap = document.getElementById('priorityChips');
+  pWrap.innerHTML = '';
+  [[1, '最優先'], [2, '急ぎ'], [3, '通常'], [4, 'いつでも']].forEach(function (p) {
+    var chip = document.createElement('button');
+    chip.className = 'chip' + (state.addPriority === p[0] ? ' active' : '');
+    chip.textContent = p[1];
+    chip.addEventListener('click', function () { state.addPriority = p[0]; renderAddChips(); });
+    pWrap.appendChild(chip);
+  });
+
+  var cWrap = document.getElementById('addCategoryChips');
+  cWrap.innerHTML = '';
+  (state.settings.categories || []).forEach(function (cat) {
+    var chip = document.createElement('button');
+    chip.className = 'chip' + (state.addCategory === cat.key ? ' active' : '');
+    chip.textContent = cat.label;
+    chip.addEventListener('click', function () { state.addCategory = cat.key; renderAddChips(); });
+    cWrap.appendChild(chip);
+  });
+
+  var kWrap = document.getElementById('kindChips');
+  kWrap.innerHTML = '';
+  [['', '通常'], ['編集', '編集']].forEach(function (k) {
+    var chip = document.createElement('button');
+    chip.className = 'chip' + (state.addKind === k[0] ? ' active' : '');
+    chip.textContent = k[1];
+    chip.addEventListener('click', function () { state.addKind = k[0]; renderAddChips(); });
+    kWrap.appendChild(chip);
+  });
+}
+
+document.getElementById('saveAddBtn').addEventListener('click', function () {
+  stopVoiceInput();
+  var text = document.getElementById('addText').value.trim();
+  if (!text) {
+    showToast('タイトルは必須です');
+    return;
+  }
+  callApi('createTaskDirect', {
+    title: (state.parsed && state.parsed.title) || text,
+    estimateMinutes: WEIGHT_MINUTES[state.addWeight],
+    deadline: document.getElementById('pvDeadline').value || null,
+    priority: state.addPriority,
+    category: state.addCategory,
+    kind: state.addKind,
+    source: '手入力',
+  }).then(function () {
+    closeSheet('addSheet');
+    return refreshAll();
+  }).catch(function (err) { showToast(String(err.message || err)); });
+});
+
+function onVoiceResult(text) {
+  document.getElementById('addText').value = text;
+  previewParse(text);
+}
+
+// ---------- シート開閉 ----------
+function openSheet(id) {
+  document.getElementById('sheetBackdrop').hidden = false;
+  document.getElementById(id).hidden = false;
+}
+function closeSheet(id) {
+  document.getElementById('sheetBackdrop').hidden = true;
+  document.getElementById(id).hidden = true;
+}
+document.getElementById('sheetBackdrop').addEventListener('click', function () {
+  stopVoiceInput();
+  closeSheet('addSheet');
+  closeSheet('detailSheet');
+  hideConfirm_();
+  confirmCallback = null;
+});
+
+// ---------- 設定タブ ----------
+function renderSettingsForm() {
+  var s = state.settings;
+  document.getElementById('setMinBlock').value = s.minBlock;
+  document.getElementById('setMaxBlock').value = s.maxBlock;
+  document.getElementById('setBreakMin').value = s.breakMin;
+  document.getElementById('setBufferMin').value = s.bufferMin;
+  document.getElementById('setLookahead').value = s.lookaheadDays;
+  document.getElementById('setReadCalendars').value = (s.readCalendarIds || []).join(',');
+  document.getElementById('setWriteCalendar').value = s.writeCalendarId || '';
+  document.getElementById('setIgnoredCalendars').value = (s.ignoredCalendarIds || []).join(',');
+  document.getElementById('setIgnoredTitles').value = (s.ignoredTitlePatterns || []).join(',');
+
+  var wrap = document.getElementById('categoryEditList');
+  wrap.innerHTML = '';
+  (s.categories || []).forEach(function (cat, i) {
+    var row = document.createElement('div');
+    row.className = 'category-edit-row';
+    row.innerHTML =
+      '<input type="color" value="' + cat.color + '" data-idx="' + i + '" class="cat-color">' +
+      '<input type="text" value="' + escapeHtml(cat.label) + '" data-idx="' + i + '" class="cat-label">';
+    wrap.appendChild(row);
+  });
+}
+
+document.getElementById('saveSettingsBtn').addEventListener('click', function () {
+  var categories = (state.settings.categories || []).map(function (cat, i) {
+    var labelInput = document.querySelector('.cat-label[data-idx="' + i + '"]');
+    var colorInput = document.querySelector('.cat-color[data-idx="' + i + '"]');
+    return { key: cat.key, label: labelInput ? labelInput.value : cat.label, color: colorInput ? colorInput.value : cat.color };
+  });
+  var patch = {
+    minBlock: Number(document.getElementById('setMinBlock').value),
+    maxBlock: Number(document.getElementById('setMaxBlock').value),
+    breakMin: Number(document.getElementById('setBreakMin').value),
+    bufferMin: Number(document.getElementById('setBufferMin').value),
+    lookaheadDays: Number(document.getElementById('setLookahead').value),
+    readCalendarIds: splitCsv(document.getElementById('setReadCalendars').value),
+    writeCalendarId: document.getElementById('setWriteCalendar').value.trim(),
+    ignoredCalendarIds: splitCsv(document.getElementById('setIgnoredCalendars').value),
+    ignoredTitlePatterns: splitCsv(document.getElementById('setIgnoredTitles').value),
+    categories: categories,
+  };
+  callApi('saveSettingsApi', patch).then(function (s) {
+    state.settings = s;
+    showToast('設定を保存しました');
+    return refreshAll();
+  }).catch(function (err) { showToast(String(err.message || err)); });
+});
+
+function splitCsv(v) {
+  return v.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+}
+
+document.getElementById('connectBtn').addEventListener('click', function () {
+  var code = document.getElementById('connectionCode').value.trim();
+  try {
+    var conn = JSON.parse(atob(code));
+    if (!conn.url) throw new Error('invalid');
+    setConnection(conn);
+    document.getElementById('connectionStatus').textContent = '接続情報を保存しました。確認中...';
+    callApi('ping', {}).then(function () {
+      document.getElementById('connectionStatus').textContent = '接続できました';
+      return refreshAll();
+    }).catch(function (err) {
+      document.getElementById('connectionStatus').textContent = '接続に失敗しました: ' + (err.message || err);
+    });
+  } catch (e) {
+    document.getElementById('connectionStatus').textContent = '接続コードの形式が正しくありません';
+  }
+});
+
+function getConnection() {
+  try { return JSON.parse(localStorage.getItem('dp_connection') || 'null'); } catch (e) { return null; }
+}
+function setConnection(conn) {
+  localStorage.setItem('dp_connection', JSON.stringify(conn));
+}
+
+// ---------- 全体更新 ----------
+function refreshAll() {
+  return Promise.all([callApi('getSettingsApi', {}), callApi('listTasksApi', {}), callApi('generateSchedule', {})])
+    .then(function (results) {
+      state.settings = results[0];
+      state.tasks = results[1];
+      state.schedule = results[2];
+      renderWarnings();
+      renderSchedule();
+      renderCategoryChips();
+      renderTasks();
+      renderSettingsForm();
+    });
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+if (IS_PWA_BUILD && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(function () {});
+}
+
+refreshAll().catch(function (err) { showToast('読み込みに失敗しました: ' + (err.message || err)); });
+setInterval(function () { if (state.tab === 'today' && state.schedule) renderSchedule(); }, 60000);
 </script>
-
-
-<script>
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", function () {
-      navigator.serviceWorker.register("./sw.js").catch(function () {});
-    });
-  }
-</script>
-
+</body>
+</html>
